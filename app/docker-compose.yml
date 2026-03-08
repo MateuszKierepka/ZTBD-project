@@ -1,0 +1,71 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: ztbd-postgres
+    environment:
+      POSTGRES_DB: vod
+      POSTGRES_USER: vod
+      POSTGRES_PASSWORD: vod123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  mysql:
+    image: mysql:8.0
+    container_name: ztbd-mysql
+    environment:
+      MYSQL_DATABASE: vod
+      MYSQL_USER: vod
+      MYSQL_PASSWORD: vod123
+      MYSQL_ROOT_PASSWORD: root123
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  mongo:
+    image: mongo:8.0
+    container_name: ztbd-mongo
+    environment:
+      MONGO_INITDB_DATABASE: vod
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  neo4j:
+    image: neo4j:2026.02.2
+    container_name: ztbd-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/vod12345
+      NEO4J_PLUGINS: '["apoc"]'
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+volumes:
+  postgres_data:
+  mysql_data:
+  mongo_data:
+  neo4j_data:
