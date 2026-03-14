@@ -1,4 +1,5 @@
 import csv
+import json
 import time
 from pathlib import Path
 
@@ -31,12 +32,12 @@ class MongoLoader:
         self._load_ratings()
         self._load_payments()
         self._load_my_list()
-        self._create_indexes()
-
-        self.client.close()
 
         elapsed = time.perf_counter() - total_start
         print(f"MongoDB: loaded successfully ({elapsed:.2f}s)")
+
+    def close(self) -> None:
+        self.client.close()
 
     def _drop_collections(self) -> None:
         for name in ["users", "content", "watch_history", "ratings", "payments", "my_list"]:
@@ -123,6 +124,7 @@ class MongoLoader:
                 "country_of_origin": row["country_of_origin"] or None,
                 "original_language": row["original_language"] or None,
                 "is_active": row["is_active"] == "true",
+                "metadata": json.loads(row["metadata"]) if row["metadata"] else {},
                 "created_at": row["created_at"],
                 "cast": [],
                 "seasons": [],
@@ -240,7 +242,7 @@ class MongoLoader:
             },
         )
 
-    def _create_indexes(self) -> None:
+    def create_indexes(self) -> None:
         self.db["users"].create_index("email", unique=True)
         self.db["users"].create_index("status")
         self.db["users"].create_index("profiles.profile_id")

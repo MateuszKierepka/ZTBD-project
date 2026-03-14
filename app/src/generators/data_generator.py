@@ -1,4 +1,5 @@
 import csv
+import json
 import random
 import uuid
 from datetime import date, datetime, timedelta
@@ -38,6 +39,26 @@ PROFILE_COUNT_WEIGHTS = [15, 30, 30, 15, 10]
 PLAN_WEIGHTS = [30, 45, 25]
 SCORE_WEIGHTS = [2, 3, 5, 8, 12, 15, 20, 18, 10, 7]
 SEASON_COUNT_WEIGHTS = [20, 25, 20, 15, 8, 5, 4, 3]
+
+STUDIOS = [
+    "Warner Bros.", "Universal Pictures", "20th Century Studios", "Paramount",
+    "Sony Pictures", "Lionsgate", "A24", "Netflix Studios", "Amazon Studios",
+    "Apple TV+ Studios", "HBO Films", "BBC Films", "Canal+ Original",
+    "TVN Productions", "Film Polski",
+]
+AWARDS = [
+    "Oscar - Best Picture", "Oscar - Best Director", "Golden Globe - Best Drama",
+    "Golden Globe - Best Comedy", "BAFTA - Best Film", "Cannes - Palme d'Or",
+    "Venice - Golden Lion", "Berlin - Golden Bear", "Emmy - Outstanding Drama",
+    "Emmy - Outstanding Comedy", "SAG Award", "Critics Choice",
+]
+TAGS = [
+    "trending", "new-release", "classic", "cult-favorite", "award-winner",
+    "binge-worthy", "feel-good", "dark", "mind-bending", "based-on-true-story",
+    "book-adaptation", "remake", "original", "exclusive", "limited-series",
+]
+PRODUCTION_COUNTRIES = ["US", "GB", "PL", "DE", "FR", "CA", "AU", "KR", "JP", "IN", "ES", "IT"]
+STREAMING_QUALITIES = ["SD", "HD", "FHD", "4K", "4K_HDR"]
 
 
 class DataGenerator:
@@ -235,7 +256,7 @@ class DataGenerator:
             "duration_minutes", "maturity_rating", "genres",
             "poster_url", "trailer_url", "avg_rating", "total_views",
             "popularity_score", "country_of_origin", "original_language",
-            "is_active", "created_at",
+            "is_active", "metadata", "created_at",
         ]
 
         def rows():
@@ -258,11 +279,26 @@ class DataGenerator:
                 country = random.choices(COUNTRIES, weights=COUNTRY_WEIGHTS)[0]
                 lang = random.choices(LANGUAGES, weights=[30, 40, 10, 10, 10])[0]
                 is_active = _bool(random.random() < 0.95)
+                metadata = json.dumps({
+                    "studio": random.choice(STUDIOS),
+                    "budget": random.randint(500_000, 200_000_000),
+                    "awards": random.sample(AWARDS, random.randint(0, 3)),
+                    "tags": random.sample(TAGS, random.randint(1, 5)),
+                    "production_countries": random.sample(
+                        PRODUCTION_COUNTRIES, random.randint(1, 3)
+                    ),
+                    "streaming_quality": {
+                        "max_resolution": random.choice(STREAMING_QUALITIES),
+                        "hdr_supported": random.random() < 0.3,
+                        "dolby_atmos": random.random() < 0.2,
+                    },
+                }, ensure_ascii=False)
                 created = _random_datetime(PLATFORM_START, PLATFORM_END)
                 yield [
                     cid, title, desc, content_type, rel_date, duration,
                     maturity, genres, poster, trailer, avg_rating, total_views,
-                    popularity, country, lang, is_active, _fmt_ts(created),
+                    popularity, country, lang, is_active, metadata,
+                    _fmt_ts(created),
                 ]
 
         self._write_csv("content.csv", headers, rows())

@@ -29,6 +29,8 @@ def cmd_load(args: argparse.Namespace) -> None:
         else [args.database]
     )
 
+    no_indexes = getattr(args, "no_indexes", False)
+
     for db in targets:
         if db == "postgres":
             from src.loaders.postgres_loader import PostgresLoader
@@ -38,10 +40,18 @@ def cmd_load(args: argparse.Namespace) -> None:
             MySQLLoader(data_dir).load_all()
         elif db == "mongo":
             from src.loaders.mongo_loader import MongoLoader
-            MongoLoader(data_dir).load_all()
+            loader = MongoLoader(data_dir)
+            loader.load_all()
+            if not no_indexes:
+                loader.create_indexes()
+            loader.close()
         elif db == "neo4j":
             from src.loaders.neo4j_loader import Neo4jLoader
-            Neo4jLoader(data_dir).load_all()
+            loader = Neo4jLoader(data_dir)
+            loader.load_all()
+            if not no_indexes:
+                loader.create_indexes()
+            loader.close()
 
 
 def main() -> None:
@@ -86,6 +96,11 @@ def main() -> None:
         type=Path,
         default=Path("data"),
         help="Base directory with generated CSV data (default: data/)",
+    )
+    load.add_argument(
+        "--no-indexes",
+        action="store_true",
+        help="Skip index creation for MongoDB and Neo4j (for benchmarking without indexes)",
     )
 
     args = parser.parse_args()

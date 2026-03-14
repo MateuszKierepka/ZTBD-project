@@ -1,0 +1,11 @@
+app/data/
+
+__pycache__/
+*.pyc
+*.pyo
+
+app/venv/
+
+.vscode/
+
+prompt.txt

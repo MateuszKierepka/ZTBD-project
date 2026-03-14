@@ -16,10 +16,10 @@ class VolumeConfig:
 VOLUMES: dict[str, VolumeConfig] = {
     "small": VolumeConfig(
         name="small",
-        users=1_000,
-        people=2_000,
-        content=500,
-        watch_history=50_000,
+        users=10_000,
+        people=5_000,
+        content=2_000,
+        watch_history=500_000,
         my_list_per_profile=(0, 20),
         ratings_per_profile=(0, 15),
     ),

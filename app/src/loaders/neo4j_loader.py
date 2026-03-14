@@ -49,10 +49,28 @@ class Neo4jLoader:
         self._create_my_list_rels()
         self._create_rated_rels()
 
-        self.driver.close()
-
         elapsed = time.perf_counter() - total_start
         print(f"Neo4j: loaded successfully ({elapsed:.2f}s)")
+
+    def create_indexes(self) -> None:
+        indexes = [
+            "CREATE INDEX IF NOT EXISTS FOR (u:User) ON (u.status)",
+            "CREATE INDEX IF NOT EXISTS FOR (u:User) ON (u.country_code)",
+            "CREATE INDEX IF NOT EXISTS FOR (c:Content) ON (c.type)",
+            "CREATE INDEX IF NOT EXISTS FOR (c:Content) ON (c.popularity_score)",
+            "CREATE INDEX IF NOT EXISTS FOR (c:Content) ON (c.is_active)",
+            "CREATE TEXT INDEX IF NOT EXISTS FOR (c:Content) ON (c.title)",
+            "CREATE TEXT INDEX IF NOT EXISTS FOR (c:Content) ON (c.metadata)",
+            "CREATE INDEX IF NOT EXISTS FOR (s:Subscription) ON (s.status)",
+            "CREATE INDEX IF NOT EXISTS FOR (p:Payment) ON (p.status)",
+        ]
+        with self.driver.session() as session:
+            for idx in indexes:
+                session.run(idx)
+        print("Neo4j: performance indexes created")
+
+    def close(self) -> None:
+        self.driver.close()
 
     def _clear_database(self) -> None:
         with self.driver.session() as session:
@@ -198,6 +216,7 @@ class Neo4jLoader:
                 "total_views": int(r["total_views"]) if r["total_views"] else 0,
                 "popularity_score": float(r["popularity_score"]) if r["popularity_score"] else 0.0,
                 "is_active": r["is_active"] == "true",
+                "metadata": r["metadata"] if r["metadata"] else None,
                 "created_at": r["created_at"],
             }
             for r in self._read_csv("content.csv")
@@ -209,7 +228,8 @@ class Neo4jLoader:
             "duration_minutes: r.duration_minutes, "
             "maturity_rating: r.maturity_rating, avg_rating: r.avg_rating, "
             "total_views: r.total_views, popularity_score: r.popularity_score, "
-            "is_active: r.is_active, created_at: r.created_at})",
+            "is_active: r.is_active, metadata: r.metadata, "
+            "created_at: r.created_at})",
             rows,
         )
 

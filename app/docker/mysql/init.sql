@@ -71,6 +71,7 @@ CREATE TABLE content (
     country_of_origin CHAR(2),
     original_language VARCHAR(5),
     is_active         BOOLEAN NOT NULL DEFAULT TRUE,
+    metadata          JSON,
     created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
