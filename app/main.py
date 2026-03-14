@@ -103,12 +103,79 @@ def main() -> None:
         help="Skip index creation for MongoDB and Neo4j (for benchmarking without indexes)",
     )
 
+    bench = subparsers.add_parser("benchmark", help="Run CRUD benchmarks")
+    bench.add_argument(
+        "--volume",
+        choices=VOLUMES.keys(),
+        default="small",
+        help="Data volume to benchmark (default: small)",
+    )
+    bench.add_argument(
+        "--database",
+        choices=["all", "postgres", "mysql", "mongo", "neo4j"],
+        default="all",
+        help="Target database (default: all)",
+    )
+    bench.add_argument(
+        "--scenarios",
+        type=str,
+        default=None,
+        help="Comma-separated scenario IDs to run (e.g., S1,S2,I1). Default: all",
+    )
+    bench.add_argument(
+        "--trials",
+        type=int,
+        default=3,
+        help="Number of trials per scenario (default: 3)",
+    )
+    bench.add_argument(
+        "--with-indexes",
+        action="store_true",
+        help="Label results as 'with indexes'",
+    )
+    bench.add_argument(
+        "--results-dir",
+        type=Path,
+        default=Path("results"),
+        help="Directory for benchmark results (default: results/)",
+    )
+
     args = parser.parse_args()
 
     if args.command == "generate":
         cmd_generate(args)
     elif args.command == "load":
         cmd_load(args)
+    elif args.command == "benchmark":
+        cmd_benchmark(args)
+
+
+def cmd_benchmark(args: argparse.Namespace) -> None:
+    from src.benchmarks.runner import BenchmarkRunner
+
+    databases = (
+        ["postgres", "mysql", "mongo", "neo4j"]
+        if args.database == "all"
+        else [args.database]
+    )
+    scenario_ids = args.scenarios.split(",") if args.scenarios else None
+    label = "with_indexes" if args.with_indexes else "no_indexes"
+
+    runner = BenchmarkRunner(volume=args.volume, results_dir=args.results_dir)
+    runner.connect(databases)
+    runner.build_context()
+
+    print(f"Running benchmarks: volume={args.volume}, "
+          f"databases={databases}, indexes={label}")
+    results = runner.run_all(
+        with_indexes=args.with_indexes,
+        trials=args.trials,
+        scenario_ids=scenario_ids,
+    )
+
+    filename = f"benchmark_{args.volume}_{label}.csv"
+    runner.save_results(results, filename)
+    runner.close()
 
 
 if __name__ == "__main__":

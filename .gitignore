@@ -3,6 +3,7 @@ app/data/
 __pycache__/
 *.pyc
 *.pyo
+*.csv
 
 app/venv/
 
