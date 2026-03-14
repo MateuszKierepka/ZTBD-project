@@ -36,7 +36,7 @@ class Neo4jLoader:
         self._load_season_nodes()
         self._load_episode_nodes()
 
-        print("  Nodes created. Loading relationships...")
+        print("Nodes created. Loading relationships...")
 
         self._create_user_profile_rels()
         self._create_user_subscription_rels()

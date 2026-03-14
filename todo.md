@@ -1,6 +1,6 @@
 # Plan realizacji projektu ZTBD — Platforma VOD
 
-**Cel:** Ocena 4.0 (z mozliwoscia rozszerzenia do 5.0)
+**Cel:** Ocena 5.0
 
 **Technologie:** PostgreSQL | MySQL | MongoDB | Neo4j, Python 3.12+
 
@@ -61,10 +61,10 @@ project/
 
 - Generator Python + Faker (locale `pl_PL` + `en_US`)
 - Dane do plikow CSV/JSON — raz wygenerowane, ladowane do 4 baz (te same dane = fair comparison)
-- 3 wolumeny wg tabeli z sekcji 10 schematu:
-  - Small: 1K users -> 50K watch_history
-  - Medium: 100K users -> 5M watch_history
-  - Large: 1M users -> 50M watch_history
+- 3 wolumeny (zgodne z wymaganiami regulaminu: 500K / 1M / 10M rekordow):
+  - Small: 10K users -> ~500K watch_history
+  - Medium: 100K users -> ~5M watch_history
+  - Large: 1M users -> ~50M watch_history
 - Kolejnosc generowania (respektuje FK):
   ```
   users -> profiles -> subscriptions -> payments
@@ -123,6 +123,11 @@ project/
 - Mierzenie czasu: `time.perf_counter_ns()` (nanosekundowa precyzja)
 - Wyniki do CSV: `scenario, database, volume, trial, time_ms`
 - Testy BEZ indeksow -> dodanie indeksow -> te same testy Z indeksami
+- **Indeksy na WSZYSTKICH 4 bazach:**
+  - PostgreSQL: B-tree, GIN (full-text, jsonb), partial indexes
+  - MySQL: B-tree, FULLTEXT, functional indexes
+  - MongoDB: compound indexes, text indexes, partial indexes
+  - Neo4j: property indexes (RANGE, TEXT, POINT), composite indexes
 
 ### Faza 5 — Analiza EXPLAIN
 
@@ -132,29 +137,64 @@ project/
 - Neo4j: `PROFILE` prefix do zapytan Cypher
 - Porownanie planow przed i po indeksach
 
-### Faza 6 — Wizualizacja i sprawozdanie
+### Faza 6 — Wizualizacja wynikow
 
 - Wykresy (matplotlib/plotly): grouped bar charts per scenariusz, linie per wolumen
 - Tabele porownawcze: czas CRUD per baza per wolumen
 - Heatmapy: impact indeksow (before/after ratio)
 - Wnioski z EXPLAIN
-- Sprawozdanie pisemne
-- Prezentacja
+- Porownanie wydajnosci operacji na danych JSON (element 5.0)
 
 ---
 
-## Rozszerzenie do oceny 5.0 (opcjonalne, na pozniej)
+## Elementy zaawansowane (wymagane do oceny 5.0)
 
-Wymagane 2 z 4 ponizszych + hipoteza badawcza:
+Wymagane min. 2 z 4 ponizszych + hipoteza badawcza.
 
-- Automatyzacja testow oraz generowania wynikow (czesciowo juz realizowane przez runner.py)
-- Dane polustrukturalne (JSON) — PostgreSQL `jsonb`, MySQL `JSON` — porownanie z MongoDB
-- Testy skalowalnosci (rownolegle zapytania, wielu uzytkownikow)
-- Analiza bezpieczenstwa (role, uprawnienia, szyfrowanie) i wplyw na CRUD
+**Wybrane 2 elementy:**
 
-**Hipoteza badawcza (propozycja):**
+### Element 1: Automatyzacja testow oraz generowania wynikow
+- `runner.py` — pelna orkiestracja: generowanie danych -> ladowanie -> benchmarki -> zbieranie wynikow
+- Jedno wywolanie uruchamia caly pipeline dla wybranego wolumenu
+- Wyniki automatycznie zapisywane do CSV/JSON w `results/`
+- Raporty i wykresy generowane programowo (bez recznej interwencji)
+
+### Element 2: Dane polustrukturalne (JSON)
+- Dodanie kolumny `metadata JSONB` do tabeli `content` w PostgreSQL
+- Dodanie kolumny `metadata JSON` do tabeli `content` w MySQL
+- MongoDB — naturalnie przechowuje JSON (embedded documents w kolekcji `content`)
+- Neo4j — przechowywanie jako property map na wezlach `Content`
+- Przykladowe dane w `metadata`: `{"studio": "...", "budget": ..., "awards": [...], "tags": [...]}`
+- Scenariusze testowe S1 i S4 beda wykorzystywac zapytania po polach JSON (filtrowanie, wyszukiwanie)
+- W sprawozdaniu: porownanie wydajnosci operacji na danych JSON miedzy 4 silnikami
+
+**Hipoteza badawcza:**
 H1: Zastosowanie indeksow znaczaco poprawia wydajnosc operacji SELECT kosztem spadku wydajnosci operacji INSERT i UPDATE.
-(Dane do weryfikacji i tak zbieramy w fazie 4)
+- Weryfikacja na podstawie danych z Fazy 4 (24 scenariusze x before/after indexes)
+- Formalna prezentacja w sprawozdaniu: hipoteza zerowa, alternatywna, analiza wynikow
+
+---
+
+## Faza 7 — Sprawozdanie i prezentacja
+
+### Sprawozdanie pisemne (wymagane przez regulamin)
+- Cel i zakres pracy
+- Opis wybranych SZBD (PostgreSQL, MySQL, MongoDB, Neo4j)
+- Zalety i wady kazdego SZBD, udogodnienia i ograniczenia
+- Czesc teoretyczna: awaryjnosc, bezpieczenstwo, migracje, integracje, skalowalnosc
+- Obszary biznesowych zastosowan wybranych SZBD
+- Opis zbioru danych (12 tabel, modele: relacyjny, dokumentowy, grafowy)
+- Opis aplikacji testowej (wymagania, technologie, dzialanie)
+- Opis testow wydajnosciowych + porownanie CRUD dla 3 wolumenow
+- Analiza planow zapytan (EXPLAIN) — przed i po indeksach
+- Rozszerzona analiza wynikow i wnioskow
+- Weryfikacja hipotezy badawczej H1
+- Wizualizacje (wykresy, tabele, heatmapy)
+
+### Prezentacja
+- Streszczenie kluczowych wynikow
+- Wykresy porownawcze
+- Wnioski i weryfikacja hipotezy
 
 ---
 
