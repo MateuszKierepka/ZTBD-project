@@ -24,6 +24,46 @@ SEQUENCES = {
     "ratings": ("ratings_rating_id_seq", "rating_id"),
 }
 
+_PG_INDEXES = [
+    "CREATE INDEX IF NOT EXISTS idx_users_status ON users (status)",
+    "CREATE INDEX IF NOT EXISTS idx_profiles_user_id ON profiles (user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions (user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_subscriptions_status_plan ON subscriptions (status, plan_name)",
+    "CREATE INDEX IF NOT EXISTS idx_payments_subscription_id ON payments (subscription_id)",
+    "CREATE INDEX IF NOT EXISTS idx_payments_status ON payments (status)",
+    "CREATE INDEX IF NOT EXISTS idx_content_type ON content (type)",
+    "CREATE INDEX IF NOT EXISTS idx_content_popularity ON content (popularity_score DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_content_active_popular ON content (popularity_score DESC) WHERE is_active = TRUE",
+    "CREATE INDEX IF NOT EXISTS idx_content_title_trgm ON content USING GIN (title gin_trgm_ops)",
+    "CREATE INDEX IF NOT EXISTS idx_content_metadata_gin ON content USING GIN (metadata)",
+    "CREATE INDEX IF NOT EXISTS idx_content_people_person_id ON content_people (person_id)",
+    "CREATE INDEX IF NOT EXISTS idx_wh_profile_started ON watch_history (profile_id, started_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_wh_content_id ON watch_history (content_id)",
+    "CREATE INDEX IF NOT EXISTS idx_wh_started_at ON watch_history (started_at)",
+    "CREATE INDEX IF NOT EXISTS idx_ratings_content_id ON ratings (content_id)",
+    "CREATE INDEX IF NOT EXISTS idx_my_list_content_id ON my_list (content_id)",
+]
+
+_PG_INDEX_NAMES = [
+    "idx_users_status",
+    "idx_profiles_user_id",
+    "idx_subscriptions_user_id",
+    "idx_subscriptions_status_plan",
+    "idx_payments_subscription_id",
+    "idx_payments_status",
+    "idx_content_type",
+    "idx_content_popularity",
+    "idx_content_active_popular",
+    "idx_content_title_trgm",
+    "idx_content_metadata_gin",
+    "idx_content_people_person_id",
+    "idx_wh_profile_started",
+    "idx_wh_content_id",
+    "idx_wh_started_at",
+    "idx_ratings_content_id",
+    "idx_my_list_content_id",
+]
+
 
 class PostgresLoader:
 
@@ -81,6 +121,26 @@ class PostgresLoader:
                     while chunk := f.read(65536):
                         copy.write(chunk)
         conn.commit()
+
+    def create_indexes(self) -> None:
+        print("Creating PostgreSQL indexes...")
+        start = time.perf_counter()
+        with psycopg.connect(self.conn_string) as conn:
+            with conn.cursor() as cur:
+                cur.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+                for sql in _PG_INDEXES:
+                    cur.execute(sql)
+            conn.commit()
+        elapsed = time.perf_counter() - start
+        print(f"PostgreSQL: indexes created ({elapsed:.2f}s)")
+
+    def drop_indexes(self) -> None:
+        print("Dropping PostgreSQL performance indexes...")
+        with psycopg.connect(self.conn_string) as conn:
+            with conn.cursor() as cur:
+                for name in _PG_INDEX_NAMES:
+                    cur.execute(f"DROP INDEX IF EXISTS {name}")
+            conn.commit()
 
     def _reset_sequences(self, conn: psycopg.Connection) -> None:
         with conn.cursor() as cur:

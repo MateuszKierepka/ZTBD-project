@@ -12,6 +12,32 @@ TABLES = [
 
 BATCH_SIZE = 5000
 
+_MYSQL_INDEXES = [
+    ("users", "CREATE INDEX idx_users_status ON users (status)"),
+    ("subscriptions", "CREATE INDEX idx_subscriptions_status_plan ON subscriptions (status, plan_name)"),
+    ("payments", "CREATE INDEX idx_payments_status ON payments (status)"),
+    ("content", "CREATE INDEX idx_content_type ON content (type)"),
+    ("content", "CREATE INDEX idx_content_popularity ON content (popularity_score DESC)"),
+    ("content", "CREATE INDEX idx_content_is_active ON content (is_active)"),
+    ("content", "CREATE FULLTEXT INDEX idx_content_title_ft ON content (title)"),
+    ("content", "CREATE INDEX idx_content_metadata_studio ON content ((CAST(metadata->>'$.studio' AS CHAR(100))))"),
+    ("watch_history", "CREATE INDEX idx_wh_profile_started ON watch_history (profile_id, started_at DESC)"),
+    ("watch_history", "CREATE INDEX idx_wh_started_at ON watch_history (started_at)"),
+]
+
+_MYSQL_INDEX_DROPS = [
+    ("users", "idx_users_status"),
+    ("subscriptions", "idx_subscriptions_status_plan"),
+    ("payments", "idx_payments_status"),
+    ("content", "idx_content_type"),
+    ("content", "idx_content_popularity"),
+    ("content", "idx_content_is_active"),
+    ("content", "idx_content_title_ft"),
+    ("content", "idx_content_metadata_studio"),
+    ("watch_history", "idx_wh_profile_started"),
+    ("watch_history", "idx_wh_started_at"),
+]
+
 
 class MySQLLoader:
 
@@ -100,6 +126,37 @@ class MySQLLoader:
                 with conn.cursor() as cur:
                     cur.executemany(sql, batch)
                 conn.commit()
+
+    def create_indexes(self) -> None:
+        print("Creating MySQL indexes...")
+        start = time.perf_counter()
+        conn = pymysql.connect(**self.conn_params)
+        try:
+            with conn.cursor() as cur:
+                for _table, sql in _MYSQL_INDEXES:
+                    try:
+                        cur.execute(sql)
+                    except pymysql.err.OperationalError:
+                        pass
+            conn.commit()
+        finally:
+            conn.close()
+        elapsed = time.perf_counter() - start
+        print(f"MySQL: indexes created ({elapsed:.2f}s)")
+
+    def drop_indexes(self) -> None:
+        print("Dropping MySQL performance indexes...")
+        conn = pymysql.connect(**self.conn_params)
+        try:
+            with conn.cursor() as cur:
+                for table, idx_name in _MYSQL_INDEX_DROPS:
+                    try:
+                        cur.execute(f"DROP INDEX {idx_name} ON {table}")
+                    except pymysql.err.OperationalError:
+                        pass
+            conn.commit()
+        finally:
+            conn.close()
 
 
 def _convert(value: str):

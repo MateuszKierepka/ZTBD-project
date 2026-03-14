@@ -34,10 +34,20 @@ def cmd_load(args: argparse.Namespace) -> None:
     for db in targets:
         if db == "postgres":
             from src.loaders.postgres_loader import PostgresLoader
-            PostgresLoader(data_dir).load_all()
+            loader = PostgresLoader(data_dir)
+            loader.load_all()
+            if no_indexes:
+                loader.drop_indexes()
+            else:
+                loader.create_indexes()
         elif db == "mysql":
             from src.loaders.mysql_loader import MySQLLoader
-            MySQLLoader(data_dir).load_all()
+            loader = MySQLLoader(data_dir)
+            loader.load_all()
+            if no_indexes:
+                loader.drop_indexes()
+            else:
+                loader.create_indexes()
         elif db == "mongo":
             from src.loaders.mongo_loader import MongoLoader
             loader = MongoLoader(data_dir)

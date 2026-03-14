@@ -8,6 +8,11 @@ Windows: .\venv\Scripts\Activate.ps1
 
 pip install -r requirements.txt
 
-Linux: python3 main.py generate --volume small && python3 main.py load --volume small
-Windows: python main.py generate --volume small; python main.py load --volume small
+python main.py generate --volume small
+
+python main.py load --volume small --no-indexes
+python main.py benchmark --volume small
+
+python main.py load --volume small
+python main.py benchmark --volume small --with-indexes
 ```
