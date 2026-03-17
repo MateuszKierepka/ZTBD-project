@@ -90,18 +90,42 @@ class Visualizer:
             .reset_index()
         )
 
+    def _median(self, df: pd.DataFrame) -> pd.DataFrame:
+        return (
+            df.groupby(["scenario_id", "scenario_name", "category", "database",
+                         "db_label", "volume", "with_indexes", "index_label"])
+            ["time_ms"]
+            .median()
+            .reset_index()
+        )
+
+    def _stats(self, df: pd.DataFrame) -> pd.DataFrame:
+        return (
+            df.groupby(["scenario_id", "scenario_name", "category", "database",
+                         "db_label", "volume", "with_indexes", "index_label"])
+            ["time_ms"]
+            .agg(["median", "min", "max"])
+            .reset_index()
+        )
+
+    @staticmethod
+    def _auto_log_scale(ax):
+        ylim = ax.get_ylim()
+        if ylim[1] > 0 and ylim[1] / max(ylim[0], 0.1) > 100:
+            ax.set_yscale("log")
+
     def _chart_crud_by_database(self, vdf: pd.DataFrame, volume: str,
                                  with_indexes: bool) -> Path:
         label = "with_indexes" if with_indexes else "no_indexes"
         label_pl = "z indeksami" if with_indexes else "bez indeksów"
-        avg = self._avg(vdf[vdf["with_indexes"] == with_indexes])
+        stats = self._stats(vdf[vdf["with_indexes"] == with_indexes])
 
         fig, axes = plt.subplots(2, 2, figsize=(18, 12))
         fig.suptitle(f"Benchmark CRUD — wolumen {volume} ({label_pl})",
                      fontsize=16, fontweight="bold")
 
         for ax, cat in zip(axes.flatten(), CATEGORY_ORDER):
-            cat_data = avg[avg["category"] == cat].sort_values("scenario_id")
+            cat_data = stats[stats["category"] == cat].sort_values("scenario_id")
             scenarios = cat_data["scenario_id"].unique()
             databases = ["postgres", "mysql", "mongo", "neo4j"]
             x = np.arange(len(scenarios))
@@ -109,13 +133,22 @@ class Visualizer:
 
             for i, db in enumerate(databases):
                 db_data = cat_data[cat_data["database"] == db]
-                values = [
-                    db_data[db_data["scenario_id"] == s]["time_ms"].values[0]
-                    if s in db_data["scenario_id"].values else 0
-                    for s in scenarios
-                ]
+                values, err_lo, err_hi = [], [], []
+                for s in scenarios:
+                    s_data = db_data[db_data["scenario_id"] == s]
+                    if not s_data.empty:
+                        med = s_data["median"].values[0]
+                        values.append(med)
+                        err_lo.append(med - s_data["min"].values[0])
+                        err_hi.append(s_data["max"].values[0] - med)
+                    else:
+                        values.append(0)
+                        err_lo.append(0)
+                        err_hi.append(0)
                 bars = ax.bar(x + i * width, values, width,
-                             label=DB_LABELS[db], color=DB_COLORS[db])
+                             label=DB_LABELS[db], color=DB_COLORS[db],
+                             yerr=[err_lo, err_hi], capsize=2,
+                             error_kw={"linewidth": 0.8})
                 for bar, val in zip(bars, values):
                     if val > 0:
                         ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height(),
@@ -123,11 +156,12 @@ class Visualizer:
 
             ax.set_title(cat, fontsize=13, fontweight="bold")
             ax.set_xlabel("Scenariusz")
-            ax.set_ylabel("Czas [ms]")
+            ax.set_ylabel("Mediana czasu [ms]")
             ax.set_xticks(x + width * 1.5)
             ax.set_xticklabels(scenarios)
             ax.legend(fontsize=8)
             ax.grid(axis="y", alpha=0.3)
+            self._auto_log_scale(ax)
 
         plt.tight_layout()
         path = self.output_dir / f"crud_{volume}_{label}.png"
@@ -137,10 +171,10 @@ class Visualizer:
 
     def _chart_scenarios_detail(self, cdf: pd.DataFrame, volume: str,
                                  category: str) -> Path:
-        avg = self._avg(cdf)
-        scenarios = sorted(avg["scenario_id"].unique())
+        stats = self._stats(cdf)
+        scenarios = sorted(stats["scenario_id"].unique())
         databases = ["postgres", "mysql", "mongo", "neo4j"]
-        index_variants = sorted(avg["with_indexes"].unique())
+        index_variants = sorted(stats["with_indexes"].unique())
 
         n_scenarios = len(scenarios)
         fig, axes = plt.subplots(1, n_scenarios, figsize=(5 * n_scenarios, 5))
@@ -153,7 +187,7 @@ class Visualizer:
         )
 
         for ax, sid in zip(axes, scenarios):
-            sdata = avg[avg["scenario_id"] == sid]
+            sdata = stats[stats["scenario_id"] == sid]
             sname = sdata["scenario_name"].iloc[0]
             x = np.arange(len(databases))
             width = 0.35 if len(index_variants) == 2 else 0.6
@@ -161,14 +195,23 @@ class Visualizer:
             for j, wi in enumerate(index_variants):
                 wi_data = sdata[sdata["with_indexes"] == wi]
                 label = "Z indeksami" if wi else "Bez indeksów"
-                values = [
-                    wi_data[wi_data["database"] == db]["time_ms"].values[0]
-                    if db in wi_data["database"].values else 0
-                    for db in databases
-                ]
+                values, err_lo, err_hi = [], [], []
+                for db in databases:
+                    db_row = wi_data[wi_data["database"] == db]
+                    if not db_row.empty:
+                        med = db_row["median"].values[0]
+                        values.append(med)
+                        err_lo.append(med - db_row["min"].values[0])
+                        err_hi.append(db_row["max"].values[0] - med)
+                    else:
+                        values.append(0)
+                        err_lo.append(0)
+                        err_hi.append(0)
                 offset = (j - 0.5) * width if len(index_variants) == 2 else 0
                 bars = ax.bar(x + offset + width / 2, values, width,
-                             label=label, alpha=0.85)
+                             label=label, alpha=0.85,
+                             yerr=[err_lo, err_hi], capsize=2,
+                             error_kw={"linewidth": 0.8})
                 for bar, val in zip(bars, values):
                     if val > 0:
                         ax.text(bar.get_x() + bar.get_width() / 2,
@@ -179,7 +222,7 @@ class Visualizer:
             ax.set_xticks(x)
             ax.set_xticklabels([DB_LABELS[db] for db in databases],
                                rotation=45, ha="right", fontsize=8)
-            ax.set_ylabel("Czas [ms]")
+            ax.set_ylabel("Mediana czasu [ms]")
             ax.legend(fontsize=7)
             ax.grid(axis="y", alpha=0.3)
 
@@ -190,7 +233,7 @@ class Visualizer:
         return path
 
     def _chart_index_comparison(self, vdf: pd.DataFrame, volume: str) -> Path:
-        avg = self._avg(vdf)
+        avg = self._median(vdf)
         scenarios = sorted(avg["scenario_id"].unique())
         databases = ["postgres", "mysql", "mongo", "neo4j"]
 
@@ -223,11 +266,12 @@ class Visualizer:
 
             ax.set_title(cat, fontsize=13, fontweight="bold")
             ax.set_xlabel("Scenariusz")
-            ax.set_ylabel("Czas [ms]")
+            ax.set_ylabel("Mediana czasu [ms]")
             ax.set_xticks(x + width * 3.5)
             ax.set_xticklabels(cat_scenarios)
             ax.legend(fontsize=6, ncol=2)
             ax.grid(axis="y", alpha=0.3)
+            self._auto_log_scale(ax)
 
         plt.tight_layout()
         path = self.output_dir / f"index_comparison_{volume}.png"
@@ -236,7 +280,7 @@ class Visualizer:
         return path
 
     def _chart_index_heatmap(self, vdf: pd.DataFrame, volume: str) -> Path:
-        avg = self._avg(vdf)
+        avg = self._median(vdf)
         databases = ["postgres", "mysql", "mongo", "neo4j"]
         scenarios = sorted(avg["scenario_id"].unique())
 
@@ -284,13 +328,13 @@ class Visualizer:
 
     def _chart_volume_scaling(self, df: pd.DataFrame,
                                volumes: list[str]) -> Path:
-        avg = self._avg(df)
+        avg = self._median(df)
         databases = ["postgres", "mysql", "mongo", "neo4j"]
         volume_order = {"small": 0, "medium": 1, "large": 2}
         volumes = sorted(volumes, key=lambda v: volume_order.get(v, 99))
 
         fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-        fig.suptitle("Skalowalność — wpływ wolumenu danych na wydajność",
+        fig.suptitle("Skalowalność — wpływ wolumenu danych na wydajność (mediana)",
                      fontsize=16, fontweight="bold")
 
         for ax, cat in zip(axes.flatten(), CATEGORY_ORDER):
@@ -299,17 +343,17 @@ class Visualizer:
 
             for db in databases:
                 db_data = cat_data[cat_data["database"] == db]
-                cat_avgs = []
+                cat_meds = []
                 for v in volumes:
                     v_data = db_data[db_data["volume"] == v]["time_ms"]
-                    cat_avgs.append(v_data.mean() if not v_data.empty else 0)
+                    cat_meds.append(v_data.median() if not v_data.empty else 0)
 
-                ax.plot(volumes, cat_avgs, marker="o", label=DB_LABELS[db],
+                ax.plot(volumes, cat_meds, marker="o", label=DB_LABELS[db],
                        color=DB_COLORS[db], linewidth=2, markersize=8)
 
             ax.set_title(cat, fontsize=13, fontweight="bold")
             ax.set_xlabel("Wolumen")
-            ax.set_ylabel("Średni czas [ms]")
+            ax.set_ylabel("Mediana czasu [ms]")
             ax.legend(fontsize=9)
             ax.grid(alpha=0.3)
 
@@ -320,7 +364,7 @@ class Visualizer:
         return path
 
     def _chart_category_summary(self, df: pd.DataFrame) -> Path:
-        avg = self._avg(df)
+        avg = self._median(df)
         databases = ["postgres", "mysql", "mongo", "neo4j"]
         volumes = sorted(avg["volume"].unique())
 
@@ -328,7 +372,7 @@ class Visualizer:
         if len(volumes) == 1:
             axes = [axes]
 
-        fig.suptitle("Podsumowanie — średni czas per kategoria CRUD",
+        fig.suptitle("Podsumowanie — mediana czasu per kategoria CRUD",
                      fontsize=16, fontweight="bold")
 
         for ax, volume in zip(axes, volumes):
@@ -339,7 +383,7 @@ class Visualizer:
             for i, db in enumerate(databases):
                 db_data = vdata[vdata["database"] == db]
                 values = [
-                    db_data[db_data["category"] == cat]["time_ms"].mean()
+                    db_data[db_data["category"] == cat]["time_ms"].median()
                     if cat in db_data["category"].values else 0
                     for cat in CATEGORY_ORDER
                 ]
@@ -349,7 +393,7 @@ class Visualizer:
             ax.set_title(f"Wolumen: {volume}", fontsize=12)
             ax.set_xticks(x + width * 1.5)
             ax.set_xticklabels(CATEGORY_ORDER)
-            ax.set_ylabel("Średni czas [ms]")
+            ax.set_ylabel("Mediana czasu [ms]")
             ax.legend(fontsize=8)
             ax.grid(axis="y", alpha=0.3)
 

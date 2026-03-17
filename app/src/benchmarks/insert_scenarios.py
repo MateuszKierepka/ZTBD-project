@@ -2,6 +2,8 @@ import random
 import uuid
 from io import StringIO
 
+from pymongo import UpdateOne
+
 from .base import BaseScenario, BenchmarkContext
 
 
@@ -136,6 +138,8 @@ class I2_BulkWatchHistory(BaseScenario):
     name = "Bulk import watch_history"
     category = "INSERT"
 
+    _BENCH_DATE = "2037-12-31 00:00:00"
+
     def setup_postgres(self, conn, ctx):
         n = ctx.params["batch_watch_history"]
         max_pid = ctx.max_ids["profiles"]
@@ -148,7 +152,7 @@ class I2_BulkWatchHistory(BaseScenario):
                 random.randint(1, max_pid),
                 random.randint(1, max_cid),
                 "\\N",
-                "2025-06-15 12:00:00",
+                self._BENCH_DATE,
                 round(random.uniform(0, 100), 2),
                 str(random.random() > 0.5).lower(),
             ))
@@ -173,13 +177,18 @@ class I2_BulkWatchHistory(BaseScenario):
 
     def run_mysql(self, conn, ctx):
         cur = conn.cursor()
-        cur.executemany(
-            "INSERT INTO watch_history (profile_id, content_id, episode_id, "
-            "started_at, progress_percent, completed) "
-            "VALUES (%s, %s, NULL, %s, %s, %s)",
-            [(d[0], d[1], d[3], d[4], 1 if d[5] == "true" else 0)
-             for d in self._data],
-        )
+        rows = [(d[0], d[1], d[3], d[4], 1 if d[5] == "true" else 0)
+                for d in self._data]
+        batch_size = 5000
+        for i in range(0, len(rows), batch_size):
+            batch = rows[i:i + batch_size]
+            placeholders = ", ".join(["(%s, %s, NULL, %s, %s, %s)"] * len(batch))
+            flat = [v for row in batch for v in row]
+            cur.execute(
+                f"INSERT INTO watch_history (profile_id, content_id, episode_id, "
+                f"started_at, progress_percent, completed) VALUES {placeholders}",
+                flat,
+            )
         conn.commit()
 
     def run_mongo(self, db, ctx):
@@ -242,9 +251,9 @@ class I2_BulkWatchHistory(BaseScenario):
         with driver.session() as s:
             s.run("""
                 MATCH (p:Profile)-[w:WATCHED]->(c:Content)
-                WHERE w.started_at = '2025-06-15 12:00:00'
+                WHERE w.started_at = $date
                 DELETE w
-            """).consume()
+            """, date=self._BENCH_DATE).consume()
 
 
 class I3_AddSeriesWithTree(BaseScenario):
@@ -478,12 +487,17 @@ class I4_BatchPayments(BaseScenario):
 
     def run_mysql(self, conn, ctx):
         cur = conn.cursor()
-        cur.executemany(
-            "INSERT INTO payments (subscription_id, amount, currency, "
-            "payment_method, transaction_id, status, paid_at, created_at) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-            self._data,
-        )
+        batch_size = 5000
+        for i in range(0, len(self._data), batch_size):
+            batch = self._data[i:i + batch_size]
+            placeholders = ", ".join(["(%s, %s, %s, %s, %s, %s, %s, %s)"] * len(batch))
+            flat = [v for row in batch for v in row]
+            cur.execute(
+                f"INSERT INTO payments (subscription_id, amount, currency, "
+                f"payment_method, transaction_id, status, paid_at, created_at) "
+                f"VALUES {placeholders}",
+                flat,
+            )
         conn.commit()
 
     def run_mongo(self, db, ctx):
@@ -571,13 +585,13 @@ class I5_RatingsWithAvgUpdate(BaseScenario):
     setup_neo4j = setup_postgres
 
     def run_postgres(self, conn, ctx):
-        for d in self._data:
-            conn.execute("""
+        with conn.cursor() as cur:
+            cur.executemany("""
                 INSERT INTO ratings (profile_id, content_id, score,
                     review_text, created_at, updated_at)
                 VALUES (%s, %s, %s, %s, %s, %s)
                 ON CONFLICT (profile_id, content_id) DO NOTHING
-            """, d)
+            """, self._data)
         conn.execute("""
             UPDATE content SET avg_rating = COALESCE(
                 (SELECT AVG(score) FROM ratings WHERE content_id = %s), 0)
@@ -587,12 +601,16 @@ class I5_RatingsWithAvgUpdate(BaseScenario):
 
     def run_mysql(self, conn, ctx):
         cur = conn.cursor()
-        for d in self._data:
-            cur.execute("""
-                INSERT IGNORE INTO ratings (profile_id, content_id, score,
-                    review_text, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, d)
+        batch_size = 5000
+        for i in range(0, len(self._data), batch_size):
+            batch = self._data[i:i + batch_size]
+            placeholders = ", ".join(["(%s, %s, %s, %s, %s, %s)"] * len(batch))
+            flat = [v for row in batch for v in row]
+            cur.execute(
+                f"INSERT IGNORE INTO ratings (profile_id, content_id, score, "
+                f"review_text, created_at, updated_at) VALUES {placeholders}",
+                flat,
+            )
         cur.execute("""
             UPDATE content SET avg_rating = COALESCE(
                 (SELECT AVG(score) FROM ratings WHERE content_id = %s), 0)
@@ -665,10 +683,9 @@ class I5_RatingsWithAvgUpdate(BaseScenario):
     def teardown_neo4j(self, driver, ctx):
         with driver.session() as s:
             s.run("""
-                MATCH (p:Profile)-[r:RATED]->(c:Content)
-                WHERE r.created_at = '2025-06-15 12:00:00'
+                MATCH (p:Profile)-[r:RATED]->(c:Content {content_id: $cid})
                 DELETE r
-            """).consume()
+            """, cid=self._cid).consume()
 
 
 class I6_ImportPeopleWithRelations(BaseScenario):
@@ -719,22 +736,31 @@ class I6_ImportPeopleWithRelations(BaseScenario):
 
     def run_mysql(self, conn, ctx):
         cur = conn.cursor()
-        cur.executemany(
-            "INSERT INTO people (person_id, first_name, last_name, "
-            "birth_date, bio, photo_url, nationality) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
-            self._people,
-        )
-        cur.executemany(
-            "INSERT IGNORE INTO content_people (content_id, person_id, role, "
-            "character_name, billing_order) VALUES (%s, %s, %s, %s, %s)",
-            self._relations,
-        )
+        batch_size = 5000
+        for i in range(0, len(self._people), batch_size):
+            batch = self._people[i:i + batch_size]
+            placeholders = ", ".join(["(%s, %s, %s, %s, %s, %s, %s)"] * len(batch))
+            flat = [v for row in batch for v in row]
+            cur.execute(
+                f"INSERT INTO people (person_id, first_name, last_name, "
+                f"birth_date, bio, photo_url, nationality) "
+                f"VALUES {placeholders}",
+                flat,
+            )
+        for i in range(0, len(self._relations), batch_size):
+            batch = self._relations[i:i + batch_size]
+            placeholders = ", ".join(["(%s, %s, %s, %s, %s)"] * len(batch))
+            flat = [v for row in batch for v in row]
+            cur.execute(
+                f"INSERT IGNORE INTO content_people (content_id, person_id, role, "
+                f"character_name, billing_order) VALUES {placeholders}",
+                flat,
+            )
         conn.commit()
 
     def run_mongo(self, db, ctx):
-        for r in self._relations:
-            db.content.update_one(
+        ops = [
+            UpdateOne(
                 {"_id": r[0]},
                 {"$push": {"cast": {
                     "person_id": r[1],
@@ -744,6 +770,10 @@ class I6_ImportPeopleWithRelations(BaseScenario):
                     "billing_order": r[4],
                 }}},
             )
+            for r in self._relations
+        ]
+        if ops:
+            db.content.bulk_write(ops, ordered=False)
 
     def run_neo4j(self, driver, ctx):
         with driver.session() as s:
@@ -787,11 +817,15 @@ class I6_ImportPeopleWithRelations(BaseScenario):
         conn.commit()
 
     def teardown_mongo(self, db, ctx):
-        for r in self._relations:
-            db.content.update_one(
+        ops = [
+            UpdateOne(
                 {"_id": r[0]},
                 {"$pull": {"cast": {"person_id": r[1]}}},
             )
+            for r in self._relations
+        ]
+        if ops:
+            db.content.bulk_write(ops, ordered=False)
 
     def teardown_neo4j(self, driver, ctx):
         with driver.session() as s:

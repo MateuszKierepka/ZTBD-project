@@ -1,5 +1,7 @@
 import random
 
+from pymongo import UpdateOne
+
 from .base import BaseScenario, BenchmarkContext
 
 
@@ -414,6 +416,7 @@ class U6_MassPopularityUpdate(BaseScenario):
         ratings_counts = {
             r["_id"]: r["cnt"] for r in db.ratings.aggregate(pipeline)
         }
+        ops = []
         for doc in db.content.find({}, {"total_views": 1, "avg_rating": 1}):
             cid = doc["_id"]
             score = (
@@ -421,9 +424,11 @@ class U6_MassPopularityUpdate(BaseScenario):
                 + doc.get("avg_rating", 0) * 5
                 + ratings_counts.get(cid, 0) * 0.1
             )
-            db.content.update_one(
+            ops.append(UpdateOne(
                 {"_id": cid}, {"$set": {"popularity_score": round(score, 2)}}
-            )
+            ))
+        if ops:
+            db.content.bulk_write(ops, ordered=False)
 
     def run_neo4j(self, driver, ctx):
         with driver.session() as s:

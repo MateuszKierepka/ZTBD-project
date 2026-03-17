@@ -634,7 +634,7 @@ class D6_MassDeleteInactiveUsers(BaseScenario):
 
     def run_postgres(self, conn, ctx):
         conn.execute(
-            "DELETE FROM users WHERE user_id >= %s AND user_id < %s",
+            "DELETE FROM users WHERE status = 'deleted' AND user_id >= %s AND user_id < %s",
             (self._start_uid, self._start_uid + self._n),
         )
         conn.commit()
@@ -642,13 +642,14 @@ class D6_MassDeleteInactiveUsers(BaseScenario):
     def run_mysql(self, conn, ctx):
         cur = conn.cursor()
         cur.execute(
-            "DELETE FROM users WHERE user_id >= %s AND user_id < %s",
+            "DELETE FROM users WHERE status = 'deleted' AND user_id >= %s AND user_id < %s",
             (self._start_uid, self._start_uid + self._n),
         )
         conn.commit()
 
     def run_mongo(self, db, ctx):
         db.users.delete_many({
+            "status": "deleted",
             "_id": {"$gte": self._start_uid,
                     "$lt": self._start_uid + self._n},
         })
@@ -657,7 +658,7 @@ class D6_MassDeleteInactiveUsers(BaseScenario):
         with driver.session() as s:
             s.run("""
                 MATCH (u:User)
-                WHERE u.user_id >= $start AND u.user_id < $end
+                WHERE u.status = 'deleted' AND u.user_id >= $start AND u.user_id < $end
                 DETACH DELETE u
             """, start=self._start_uid,
                 end=self._start_uid + self._n).consume()

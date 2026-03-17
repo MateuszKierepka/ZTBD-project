@@ -1,9 +1,7 @@
 import copy
 import csv
 import time
-import threading
 import traceback
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import psycopg
@@ -112,7 +110,6 @@ class BenchmarkRunner:
         scenario_ids: list[str] | None = None,
     ) -> list[dict]:
         results = []
-        results_lock = threading.Lock()
         scenarios = ALL_SCENARIOS
         if scenario_ids:
             scenarios = [s for s in scenarios if s.id in scenario_ids]
@@ -120,56 +117,49 @@ class BenchmarkRunner:
         db_names = list(self.connections.keys())
         total = len(scenarios) * len(db_names) * trials
         done = 0
-        done_lock = threading.Lock()
-        print_lock = threading.Lock()
 
-        def run_db(scenario, db_name):
-            nonlocal done
+        for scenario in scenarios:
+            for db_name in db_names:
+                conn = self._create_connection(db_name)
+                sc = copy.copy(scenario)
 
-            conn = self._create_connection(db_name)
-            sc = copy.copy(scenario)
+                self._warmup(sc, db_name, conn)
 
-            times = []
-            for trial in range(1, trials + 1):
-                with done_lock:
+                times = []
+                for trial in range(1, trials + 1):
                     done += 1
-                    current_done = done
 
-                try:
-                    sc.setup(db_name, conn, self.ctx)
-                except Exception as exc:
-                    with print_lock:
-                        print(f"  [{current_done}/{total}] {sc.id} | {db_name:<8} | "
+                    try:
+                        sc.setup(db_name, conn, self.ctx)
+                    except Exception as exc:
+                        print(f"  [{done}/{total}] {sc.id} | {db_name:<8} | "
                               f"trial {trial}: SETUP ERROR: {exc}")
                         traceback.print_exc()
-                    self._try_rollback(db_name, conn)
-                    continue
+                        self._try_rollback(db_name, conn)
+                        continue
 
-                try:
-                    start = time.perf_counter_ns()
-                    sc.run(db_name, conn, self.ctx)
-                    elapsed_ms = (time.perf_counter_ns() - start) / 1_000_000
-                except Exception as exc:
-                    with print_lock:
-                        print(f"  [{current_done}/{total}] {sc.id} | {db_name:<8} | "
+                    try:
+                        start = time.perf_counter_ns()
+                        sc.run(db_name, conn, self.ctx)
+                        elapsed_ms = (time.perf_counter_ns() - start) / 1_000_000
+                    except Exception as exc:
+                        print(f"  [{done}/{total}] {sc.id} | {db_name:<8} | "
                               f"trial {trial}: RUN ERROR: {exc}")
                         traceback.print_exc()
-                    self._try_rollback(db_name, conn)
+                        self._try_rollback(db_name, conn)
+                        try:
+                            sc.teardown(db_name, conn, self.ctx)
+                        except Exception:
+                            pass
+                        continue
+
                     try:
                         sc.teardown(db_name, conn, self.ctx)
-                    except Exception:
-                        pass
-                    continue
-
-                try:
-                    sc.teardown(db_name, conn, self.ctx)
-                except Exception as exc:
-                    with print_lock:
-                        print(f"  [{current_done}/{total}] {sc.id} | {db_name:<8} | "
+                    except Exception as exc:
+                        print(f"  [{done}/{total}] {sc.id} | {db_name:<8} | "
                               f"trial {trial}: TEARDOWN ERROR: {exc}")
 
-                times.append(elapsed_ms)
-                with results_lock:
+                    times.append(elapsed_ms)
                     results.append({
                         "scenario_id": sc.id,
                         "scenario_name": sc.name,
@@ -181,26 +171,28 @@ class BenchmarkRunner:
                         "with_indexes": with_indexes,
                     })
 
-            if times:
-                avg = sum(times) / len(times)
-                with print_lock:
+                if times:
+                    avg = sum(times) / len(times)
                     print(
-                        f"  [{current_done}/{total}] {sc.id} | {db_name:<8} | "
+                        f"  [{done}/{total}] {sc.id} | {db_name:<8} | "
                         f"avg={avg:.1f}ms  ({', '.join(f'{t:.1f}' for t in times)})"
                     )
 
-            self._close_connection(db_name, conn)
-
-        for scenario in scenarios:
-            with ThreadPoolExecutor(max_workers=len(db_names)) as executor:
-                futures = [
-                    executor.submit(run_db, scenario, db_name)
-                    for db_name in db_names
-                ]
-                for f in futures:
-                    f.result()
+                self._close_connection(db_name, conn)
 
         return results
+
+    def _warmup(self, sc, db_name: str, conn) -> None:
+        try:
+            sc.setup(db_name, conn, self.ctx)
+            sc.run(db_name, conn, self.ctx)
+            sc.teardown(db_name, conn, self.ctx)
+        except Exception:
+            self._try_rollback(db_name, conn)
+            try:
+                sc.teardown(db_name, conn, self.ctx)
+            except Exception:
+                pass
 
     def _try_rollback(self, db_name: str, conn) -> None:
         if db_name in ("postgres", "mysql") and hasattr(conn, "rollback"):
