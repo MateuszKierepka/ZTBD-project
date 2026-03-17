@@ -76,7 +76,13 @@ class Neo4jLoader:
         with self.driver.session() as session:
             while True:
                 result = session.run(
-                    "MATCH (n) WITH n LIMIT 10000 DETACH DELETE n RETURN count(*) AS deleted"
+                    "MATCH ()-[r]->() WITH r LIMIT 50000 DELETE r RETURN count(*) AS deleted"
+                )
+                if result.single()["deleted"] == 0:
+                    break
+            while True:
+                result = session.run(
+                    "MATCH (n) WITH n LIMIT 50000 DELETE n RETURN count(*) AS deleted"
                 )
                 if result.single()["deleted"] == 0:
                     break

@@ -1,4 +1,5 @@
 import random
+import threading
 from dataclasses import dataclass, field
 
 
@@ -39,10 +40,12 @@ class BenchmarkContext:
     max_ids: dict[str, int]
     params: dict[str, object]
     _counter: int = field(default=0, repr=False)
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def next_id(self) -> int:
-        self._counter += 1
-        return self._counter
+        with self._lock:
+            self._counter += 1
+            return self._counter
 
     def test_id(self, table: str) -> int:
         return self.max_ids[table] + 100_000 + self.next_id()

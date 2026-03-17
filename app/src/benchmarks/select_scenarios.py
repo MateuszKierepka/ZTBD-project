@@ -223,12 +223,22 @@ class S4_FullTextSearch(BaseScenario):
         cur.fetchall()
 
     def run_mongo(self, db, ctx):
+        import re as _re
+        from pymongo.errors import OperationFailure
+
         term = ctx.params["search_term"]
-        list(db.content.find(
-            {"$text": {"$search": term}},
-            {"score": {"$meta": "textScore"}, "title": 1,
-             "popularity_score": 1, "metadata.tags": 1},
-        ).sort([("score", {"$meta": "textScore"})]).limit(20))
+        try:
+            list(db.content.find(
+                {"$text": {"$search": term}},
+                {"score": {"$meta": "textScore"}, "title": 1,
+                 "popularity_score": 1, "metadata.tags": 1},
+            ).sort([("score", {"$meta": "textScore"})]).limit(20))
+        except OperationFailure:
+            pattern = _re.compile(_re.escape(term), _re.IGNORECASE)
+            list(db.content.find(
+                {"title": {"$regex": pattern}},
+                {"title": 1, "popularity_score": 1, "metadata.tags": 1},
+            ).sort("popularity_score", -1).limit(20))
 
     def run_neo4j(self, driver, ctx):
         term = ctx.params["search_term"]

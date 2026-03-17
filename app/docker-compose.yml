@@ -54,6 +54,9 @@ services:
     environment:
       NEO4J_AUTH: neo4j/vod12345
       NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_server_memory_heap_initial__size: 1g
+      NEO4J_server_memory_heap_max__size: 1g
+      NEO4J_dbms_memory_transaction_total_max: 1g
     ports:
       - "7474:7474"
       - "7687:7687"
@@ -62,7 +65,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2g
+          memory: 4g
 
 volumes:
   postgres_data:

@@ -150,6 +150,73 @@ def main() -> None:
         help="Directory for benchmark results (default: results/)",
     )
 
+    exp = subparsers.add_parser("explain", help="Run EXPLAIN analysis on SELECT scenarios")
+    exp.add_argument(
+        "--volume",
+        choices=VOLUMES.keys(),
+        default="small",
+        help="Data volume context (default: small)",
+    )
+    exp.add_argument(
+        "--with-indexes",
+        action="store_true",
+        help="Label results as 'with indexes'",
+    )
+    exp.add_argument(
+        "--results-dir",
+        type=Path,
+        default=Path("results"),
+        help="Directory for EXPLAIN results (default: results/)",
+    )
+
+    run_all = subparsers.add_parser(
+        "run-all",
+        help="Full pipeline: load -> benchmark -> explain (both index variants)",
+    )
+    run_all.add_argument(
+        "--volume",
+        choices=VOLUMES.keys(),
+        default="small",
+        help="Data volume (default: small)",
+    )
+    run_all.add_argument(
+        "--trials",
+        type=int,
+        default=3,
+        help="Number of trials per scenario (default: 3)",
+    )
+    run_all.add_argument(
+        "--data-dir",
+        type=Path,
+        default=Path("data"),
+        help="Base directory with generated CSV data (default: data/)",
+    )
+    run_all.add_argument(
+        "--results-dir",
+        type=Path,
+        default=Path("results"),
+        help="Directory for results (default: results/)",
+    )
+    run_all.add_argument(
+        "--skip-generate",
+        action="store_true",
+        help="Skip data generation (use existing data)",
+    )
+
+    vis = subparsers.add_parser("visualize", help="Generate charts from benchmark results")
+    vis.add_argument(
+        "--results-dir",
+        type=Path,
+        default=Path("results"),
+        help="Directory with benchmark CSV files (default: results/)",
+    )
+    vis.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("results/charts"),
+        help="Directory for generated charts (default: results/charts/)",
+    )
+
     args = parser.parse_args()
 
     if args.command == "generate":
@@ -158,6 +225,12 @@ def main() -> None:
         cmd_load(args)
     elif args.command == "benchmark":
         cmd_benchmark(args)
+    elif args.command == "explain":
+        cmd_explain(args)
+    elif args.command == "visualize":
+        cmd_visualize(args)
+    elif args.command == "run-all":
+        cmd_run_all(args)
 
 
 def cmd_benchmark(args: argparse.Namespace) -> None:
@@ -186,6 +259,112 @@ def cmd_benchmark(args: argparse.Namespace) -> None:
     filename = f"benchmark_{args.volume}_{label}.csv"
     runner.save_results(results, filename)
     runner.close()
+
+
+def cmd_explain(args: argparse.Namespace) -> None:
+    from src.benchmarks.explain_analyzer import ExplainAnalyzer
+
+    label = "with_indexes" if args.with_indexes else "no_indexes"
+
+    analyzer = ExplainAnalyzer(results_dir=args.results_dir)
+    analyzer.connect()
+
+    print(f"Running EXPLAIN analysis: volume={args.volume}, indexes={label}")
+    analyzer.analyze_all(volume=args.volume, with_indexes=args.with_indexes)
+    analyzer.close()
+
+
+def cmd_visualize(args: argparse.Namespace) -> None:
+    from src.analysis.visualizer import Visualizer
+
+    viz = Visualizer(results_dir=args.results_dir, output_dir=args.output_dir)
+    viz.load_results()
+    files = viz.generate_all()
+    for f in files:
+        print(f"  -> {f}")
+
+
+def cmd_run_all(args: argparse.Namespace) -> None:
+    import time as _time
+
+    volume = args.volume
+    trials = args.trials
+    data_dir = args.data_dir
+    results_dir = args.results_dir
+
+    steps = [
+        f"generate --volume {volume}",
+        f"load --no-indexes --volume {volume}",
+        f"benchmark --volume {volume} --trials {trials}",
+        f"explain --volume {volume}",
+        f"load --volume {volume}",
+        f"benchmark --volume {volume} --trials {trials} --with-indexes",
+        f"explain --volume {volume} --with-indexes",
+        "visualize",
+    ]
+
+    if args.skip_generate:
+        steps = steps[1:]
+
+    total_start = _time.perf_counter()
+    print(f"{'='*60}")
+    print(f"  RUN-ALL PIPELINE: volume={volume}, trials={trials}")
+    print(f"{'='*60}")
+
+    for i, step_desc in enumerate(steps, 1):
+        print(f"\n{'─'*60}")
+        print(f"  Step {i}/{len(steps)}: python main.py {step_desc}")
+        print(f"{'─'*60}\n")
+
+        step_start = _time.perf_counter()
+        parts = step_desc.split()
+        cmd = parts[0]
+
+        if cmd == "generate":
+            ns = argparse.Namespace(
+                volume=volume, data_dir=data_dir, seed=42,
+            )
+            cmd_generate(ns)
+
+        elif cmd == "load":
+            no_indexes = "--no-indexes" in parts
+            ns = argparse.Namespace(
+                volume=volume, database="all",
+                data_dir=data_dir, no_indexes=no_indexes,
+            )
+            cmd_load(ns)
+
+        elif cmd == "benchmark":
+            with_indexes = "--with-indexes" in parts
+            ns = argparse.Namespace(
+                volume=volume, database="all", scenarios=None,
+                trials=trials, with_indexes=with_indexes,
+                results_dir=results_dir,
+            )
+            cmd_benchmark(ns)
+
+        elif cmd == "explain":
+            with_indexes = "--with-indexes" in parts
+            ns = argparse.Namespace(
+                volume=volume, with_indexes=with_indexes,
+                results_dir=results_dir,
+            )
+            cmd_explain(ns)
+
+        elif cmd == "visualize":
+            ns = argparse.Namespace(
+                results_dir=results_dir,
+                output_dir=results_dir / "charts",
+            )
+            cmd_visualize(ns)
+
+        elapsed = _time.perf_counter() - step_start
+        print(f"\n  Step {i} completed in {elapsed:.1f}s")
+
+    total = _time.perf_counter() - total_start
+    print(f"\n{'='*60}")
+    print(f"  PIPELINE COMPLETE — total time: {total:.1f}s ({total/60:.1f}min)")
+    print(f"{'='*60}")
 
 
 if __name__ == "__main__":

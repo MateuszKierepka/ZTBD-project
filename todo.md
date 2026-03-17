@@ -1,209 +1,188 @@
-# Plan realizacji projektu ZTBD — Platforma VOD
+# TODO — Poprawki benchmarku ZTBD
 
-**Cel:** Ocena 5.0
+**Cel:** porownywac bazy danych, nie drivery Pythona.
 
-**Technologie:** PostgreSQL | MySQL | MongoDB | Neo4j, Python 3.12+
+Wyniki dla small i medium juz zebrane. Ponizsze zmiany wymagaja ponownego uruchomienia benchmarkow.
 
 ---
 
-## Struktura projektu
+## KRYTYCZNE — wplywaja na uczciwosci porownania
 
+### 1. Sekwencyjne wykonanie baz (usunac ThreadPoolExecutor)
+
+**Plik:** `app/src/benchmarks/runner.py:194-201`
+
+**Problem:** `ThreadPoolExecutor` uruchamia wszystkie 4 bazy jednoczesnie dla kazdego scenariusza. Kontenery Docker dziela CPU, RAM i I/O — wyniki sa wzajemnie zaklocane.
+
+**Zmiana:** iteracja po bazach sekwencyjnie, jedna po drugiej.
+
+---
+
+### 2. MySQL bulk INSERT — `LOAD DATA` zamiast `executemany`
+
+**Pliki:** `app/src/benchmarks/insert_scenarios.py` — scenariusze I2, I4, I6
+
+**Problem:** PostgreSQL uzywa `COPY FROM STDIN` (strumieniowy transfer), MySQL uzywa `cur.executemany()` (parsowanie SQL per wiersz). Wynik: I2 medium PostgreSQL = 2.6s, MySQL = 157s (60x wolniejszy). To roznica protokolow ladowania, nie baz.
+
+**Zmiana:** uzyc `LOAD DATA LOCAL INFILE` dla MySQL:
+- `pymysql.connect(..., local_infile=True)`
+- zapis danych do tymczasowego pliku CSV (`tempfile.NamedTemporaryFile`)
+- `LOAD DATA LOCAL INFILE '/tmp/file.csv' INTO TABLE ...`
+
+Alternatywnie: multi-row INSERT z batchami po 1000-5000 wierszy (`INSERT INTO t VALUES (...), (...), ...`).
+
+---
+
+### 3. I5 — PostgreSQL i MySQL uzywaja petli z pojedynczym INSERT
+
+**Plik:** `app/src/benchmarks/insert_scenarios.py:573-600`
+
+**Problem:**
+```python
+for d in self._data:
+    conn.execute("INSERT INTO ratings ... VALUES ...")
 ```
-project/
-├── docker-compose.yml          # 4 bazy danych
-├── docker/
-│   ├── postgres/init.sql       # schemat + indeksy PostgreSQL
-│   ├── mysql/init.sql          # schemat + indeksy MySQL
-│   └── neo4j/                  # konfiguracja
-├── src/
-│   ├── config.py               # connection strings, stale
-│   ├── generators/
-│   │   └── data_generator.py   # Faker-based generator
-│   ├── loaders/
-│   │   ├── postgres_loader.py
-│   │   ├── mysql_loader.py
-│   │   ├── mongo_loader.py
-│   │   └── neo4j_loader.py
-│   ├── benchmarks/
-│   │   ├── runner.py           # orkiestracja testow
-│   │   ├── scenarios.py        # 24 scenariusze CRUD
-│   │   └── explain_analyzer.py # EXPLAIN ANALYZE
-│   └── analysis/
-│       ├── results_analyzer.py
-│       └── visualizer.py       # wykresy matplotlib/plotly
-├── results/                    # wyniki benchmarkow (CSV/JSON)
-├── requirements.txt
-└── README.md
+MongoDB robi `insert_many` w batchach po 5000. SQL-e robia N oddzielnych round-tripow.
+
+**Zmiana:** PostgreSQL → `COPY`, MySQL → `executemany` lub multi-row INSERT.
+
+---
+
+### 4. MongoDB U6 — petla `update_one` zamiast `bulk_write`
+
+**Plik:** `app/src/benchmarks/update_scenarios.py:410-426`
+
+**Problem:**
+```python
+for doc in db.content.find(...):
+    db.content.update_one({"_id": cid}, {"$set": {"popularity_score": ...}})
+```
+~10K oddzielnych round-tripow sieciowych.
+
+**Zmiana:**
+```python
+from pymongo import UpdateOne
+ops = []
+for doc in db.content.find(...):
+    ops.append(UpdateOne({"_id": doc["_id"]}, {"$set": {"popularity_score": score}}))
+db.content.bulk_write(ops, ordered=False)
 ```
 
 ---
 
-## Fazy realizacji
+### 5. MongoDB I6 — ta sama petla `update_one`
 
-### Faza 0 — Infrastruktura Docker
+**Plik:** `app/src/benchmarks/insert_scenarios.py:736-746`
 
-- `docker-compose.yml` z 4 serwisami:
-  - `postgres:17` — port 5432
-  - `mysql:9.2` — port 3306
-  - `mongo:8` — port 27017
-  - `neo4j:5` — port 7687 (Bolt) + 7474 (HTTP)
-- Wolumeny Docker dla persystencji danych
-- Ograniczenia pamieci per kontener (fair benchmarki)
+**Problem:** identyczny jak U6 — N oddzielnych round-tripow do pushowania cast entries.
 
-### Faza 1 — Schematy baz danych
-
-- **PostgreSQL** — DDL 12 tabel wg schematu v3 (FK, CHECK, UNIQUE), BEZ indeksow (dodamy osobno)
-- **MySQL** — analogiczny DDL (InnoDB), roznice skladniowe (BIGSERIAL -> BIGINT AUTO_INCREMENT)
-- **MongoDB** — 5 kolekcji (users, content, watch_history, ratings, payments) + JSON Schema validation
-- **Neo4j** — constraints (unique) na node labels, relacje wg sekcji 9 schematu
-
-### Faza 2 — Generowanie danych
-
-- Generator Python + Faker (locale `pl_PL` + `en_US`)
-- Dane do plikow CSV/JSON — raz wygenerowane, ladowane do 4 baz (te same dane = fair comparison)
-- 3 wolumeny (zgodne z wymaganiami regulaminu: 500K / 1M / 10M rekordow):
-  - Small: 10K users -> ~500K watch_history
-  - Medium: 100K users -> ~5M watch_history
-  - Large: 1M users -> ~50M watch_history
-- Kolejnosc generowania (respektuje FK):
-  ```
-  users -> profiles -> subscriptions -> payments
-  people -> content -> content_people -> seasons -> episodes
-  watch_history, my_list, ratings
-  ```
-
-### Faza 3 — Ladowanie danych do baz
-
-- **PostgreSQL**: `COPY FROM` (bulk insert)
-- **MySQL**: `LOAD DATA INFILE` (bulk insert)
-- **MongoDB**: `insert_many()` z batchami, transformacja do struktury dokumentowej (embedding)
-- **Neo4j**: `UNWIND` + `CREATE` w transakcjach batchowych lub `neo4j-admin import`
-
-### Faza 4 — Benchmarki CRUD (24 scenariusze)
-
-#### INSERT (6 scenariuszy)
-
-- I1. Rejestracja uzytkownika (multi-table: users + profiles + subscriptions)
-- I2. Masowy import watch_history (batch 100K-10M rekordow)
-- I3. Dodanie serialu z pelnym drzewem (content + seasons + episodes + content_people)
-- I4. Batch insert platnosci (10K-100K rekordow do payments)
-- I5. Dodanie ocen z przeliczeniem avg_rating (INSERT ratings + UPDATE content)
-- I6. Import osob z powiazaniami (batch INSERT people + content_people)
-
-#### SELECT (6 scenariuszy)
-
-- S1. Strona glowna (filtrowanie + sortowanie po popularity_score, genres LIKE)
-- S2. Rekomendacje collaborative filtering (zlozone JOIN-y watch_history)
-- S3. TOP 100 tresci wg ogladalnosci w ostatnim miesiacu (agregacja)
-- S4. Wyszukiwanie pelnotekstowe po tytule (LIKE/ILIKE vs text index)
-- S5. Historia ogladania profilu z JOIN na content (50 ostatnich wpisow z tytulami)
-- S6. Filmografia osoby (JOIN people -> content_people -> content)
-
-#### UPDATE (6 scenariuszy)
-
-- U1. Aktualizacja postepu ogladania (UPDATE watch_history.progress_percent)
-- U2. Przeliczenie avg_rating (UPDATE content z podzapytaniem AVG z ratings)
-- U3. Masowa zmiana planu subskrypcji (UPDATE z podzapytaniem na users)
-- U4. Aktualizacja danych uzytkownika (UPDATE users SET email, phone)
-- U5. Oznaczenie tresci jako nieaktywnej (UPDATE content.is_active)
-- U6. Masowa aktualizacja popularity_score (UPDATE z formula obliczeniowa)
-
-#### DELETE (6 scenariuszy)
-
-- D1. Usuniecie tresci z kaskada (CASCADE: seasons, episodes, content_people, watch_history, my_list, ratings)
-- D2. Usuniecie profilu z historia (CASCADE: watch_history, my_list, ratings)
-- D3. Czyszczenie starej historii (DELETE watch_history WHERE started_at < rok temu)
-- D4. Usuniecie z my_list (DELETE WHERE profile_id AND content_id)
-- D5. Usuniecie subskrypcji z platnosciami (kaskadowe)
-- D6. Masowe usuniecie nieaktywnych uzytkownikow (DELETE users WHERE status='deleted')
-
-#### Metodologia testow
-
-- Kazdy scenariusz x 4 bazy x 3 wolumeny x 3 proby = pomiar
-- Mierzenie czasu: `time.perf_counter_ns()` (nanosekundowa precyzja)
-- Wyniki do CSV: `scenario, database, volume, trial, time_ms`
-- Testy BEZ indeksow -> dodanie indeksow -> te same testy Z indeksami
-- **Indeksy na WSZYSTKICH 4 bazach:**
-  - PostgreSQL: B-tree, GIN (full-text, jsonb), partial indexes
-  - MySQL: B-tree, FULLTEXT, functional indexes
-  - MongoDB: compound indexes, text indexes, partial indexes
-  - Neo4j: property indexes (RANGE, TEXT, POINT), composite indexes
-
-### Faza 5 — Analiza EXPLAIN
-
-- PostgreSQL: `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)`
-- MySQL: `EXPLAIN ANALYZE`
-- MongoDB: `.explain("executionStats")`
-- Neo4j: `PROFILE` prefix do zapytan Cypher
-- Porownanie planow przed i po indeksach
-
-### Faza 6 — Wizualizacja wynikow
-
-- Wykresy (matplotlib/plotly): grouped bar charts per scenariusz, linie per wolumen
-- Tabele porownawcze: czas CRUD per baza per wolumen
-- Heatmapy: impact indeksow (before/after ratio)
-- Wnioski z EXPLAIN
-- Porownanie wydajnosci operacji na danych JSON (element 5.0)
+**Zmiana:** `bulk_write` z lista `UpdateOne`.
 
 ---
 
-## Elementy zaawansowane (wymagane do oceny 5.0)
+### 6. Brak warmup — trial 1 jest outlierem
 
-Wymagane min. 2 z 4 ponizszych + hipoteza badawcza.
+**Plik:** `app/src/benchmarks/runner.py:133`
 
-**Wybrane 2 elementy:**
+**Problem:** Petla zaczyna sie od razu od trial 1. Przyklad cold start:
+- Neo4j S1 medium: trial 1 = 180ms, trial 2 = 12ms, trial 3 = 10ms
+- MySQL S1 medium: trial 1 = 526ms, trial 2 = 11ms, trial 3 = 11ms
 
-### Element 1: Automatyzacja testow oraz generowania wynikow
-- `runner.py` — pelna orkiestracja: generowanie danych -> ladowanie -> benchmarki -> zbieranie wynikow
-- Jedno wywolanie uruchamia caly pipeline dla wybranego wolumenu
-- Wyniki automatycznie zapisywane do CSV/JSON w `results/`
-- Raporty i wykresy generowane programowo (bez recznej interwencji)
+Trial 1 mierzy: cache miss + JVM JIT (Neo4j) + plan cache miss. Srednia jest zdominowana.
 
-### Element 2: Dane polustrukturalne (JSON)
-- Dodanie kolumny `metadata JSONB` do tabeli `content` w PostgreSQL
-- Dodanie kolumny `metadata JSON` do tabeli `content` w MySQL
-- MongoDB — naturalnie przechowuje JSON (embedded documents w kolekcji `content`)
-- Neo4j — przechowywanie jako property map na wezlach `Content`
-- Przykladowe dane w `metadata`: `{"studio": "...", "budget": ..., "awards": [...], "tags": [...]}`
-- Scenariusze testowe S1 i S4 beda wykorzystywac zapytania po polach JSON (filtrowanie, wyszukiwanie)
-- W sprawozdaniu: porownanie wydajnosci operacji na danych JSON miedzy 4 silnikami
-
-**Hipoteza badawcza:**
-H1: Zastosowanie indeksow znaczaco poprawia wydajnosc operacji SELECT kosztem spadku wydajnosci operacji INSERT i UPDATE.
-- Weryfikacja na podstawie danych z Fazy 4 (24 scenariusze x before/after indexes)
-- Formalna prezentacja w sprawozdaniu: hipoteza zerowa, alternatywna, analiza wynikow
+**Zmiana:** przed petla trials dodac 1 rozgrzewkowy cykl (setup → run → teardown) bez zapisywania wyniku. Alternatywnie: zwiekszyc trials do 5 i odrzucic najgorszy wynik.
 
 ---
 
-## Faza 7 — Sprawozdanie i prezentacja
+## WAZNE — jakosc analizy
 
-### Sprawozdanie pisemne (wymagane przez regulamin)
-- Cel i zakres pracy
-- Opis wybranych SZBD (PostgreSQL, MySQL, MongoDB, Neo4j)
-- Zalety i wady kazdego SZBD, udogodnienia i ograniczenia
-- Czesc teoretyczna: awaryjnosc, bezpieczenstwo, migracje, integracje, skalowalnosc
-- Obszary biznesowych zastosowan wybranych SZBD
-- Opis zbioru danych (12 tabel, modele: relacyjny, dokumentowy, grafowy)
-- Opis aplikacji testowej (wymagania, technologie, dzialanie)
-- Opis testow wydajnosciowych + porownanie CRUD dla 3 wolumenow
-- Analiza planow zapytan (EXPLAIN) — przed i po indeksach
-- Rozszerzona analiza wynikow i wnioskow
-- Weryfikacja hipotezy badawczej H1
-- Wizualizacje (wykresy, tabele, heatmapy)
+### 7. Mediana zamiast (lub obok) sredniej
 
-### Prezentacja
-- Streszczenie kluczowych wynikow
-- Wykresy porownawcze
-- Wnioski i weryfikacja hipotezy
+**Problem:** Srednia z [180, 12, 10] = 67ms. Mediana = 12ms. Mediana lepiej oddaje typowa wydajnosc.
+
+**Zmiana:** w wizualizacji uzyc mediany jako glownej metryki. Dodac error bars (min-max lub stddev) na wykresach slupkowych.
 
 ---
 
-## Wybor technologii — uzasadnienie
+### 8. Skala logarytmiczna na wykresach
 
-**Python 3.12+** — najlepszy wybor do tego typu projektu:
-- `Faker` (pl_PL) — realistyczne dane testowe
-- `psycopg` / `pymysql` / `pymongo` / `neo4j` — natywne drivery do 4 baz
-- `pandas` + `matplotlib` / `plotly` — analiza i wizualizacja wynikow
-- Najprostszy do zadan benchmarkowych, najlepszy ekosystem data-tooling
+**Problem:** Na `index_comparison_medium` slupek U6 PostgreSQL (265s) zaglusza reszte scenariuszy — wiekszosc <100ms, os Y siega 265,000ms.
 
-**Docker Compose** — przenoszalnosc projektu, identyczne srodowisko na kazdej maszynie.
+**Zmiana:** dodac `ax.set_yscale('log')` dla wykresow zbiorczych. Albo rozdzielic scenariusze na "lekkie" (<1s) i "ciezkie" (>1s) na osobnych panelach.
+
+---
+
+### 9. MongoDB D1/D2 — opisac reczna kaskade w raporcie
+
+**Plik:** `app/src/benchmarks/delete_scenarios.py:123-127`
+
+**Problem:** PostgreSQL robi 1 operacje (`DELETE FROM content`) z CASCADE. MongoDB robi 4 oddzielne operacje (delete z watch_history, my_list, ratings, content). Czas MongoDB obejmuje 4 round-tripy.
+
+**Zmiana w kodzie:** brak — to realna roznica architekturalna. **Opisac w sprawozdaniu** jako koszt modelu dokumentowego.
+
+---
+
+### 10. Natywne daty w MongoDB i Neo4j
+
+**Pliki:** `app/src/loaders/mongo_loader.py`, `app/src/loaders/neo4j_loader.py`
+
+**Problem:** `started_at` przechowywany jako string (`"2025-06-15 12:00:00"`). Porownania w S3/D3 (`{"$gte": "2025-06-01"}`) to porownania stringow, nie dat. Indeksy na stringach sa mniej efektywne niz na natywnych typach dat.
+
+**Zmiana:**
+- MongoDB: konwertowac na `datetime` przy ladowaniu (`datetime.fromisoformat(...)`)
+- Neo4j: uzyc `datetime()` w Cypher przy ladowaniu
+- Dostosowac zapytania w scenariuszach do natywnych typow
+
+---
+
+### 11. D6 — filtr nie testuje tego co nazwa mowi
+
+**Pliki:** `app/src/benchmarks/delete_scenarios.py:635-640`
+
+**Problem:** Nazwa: "Mass delete inactive users". Zapytanie:
+```sql
+DELETE FROM users WHERE user_id >= %s AND user_id < %s
+```
+To range scan na PK, nie filtrowanie po `status = 'deleted'`.
+
+**Zmiana:** `DELETE FROM users WHERE status = 'deleted' AND user_id >= ... AND user_id < ...`
+
+---
+
+## DROBNE — poprawnosc teardown
+
+### 12. I5 teardown Neo4j — zbyt szerokie kryterium usuwania
+
+**Plik:** `app/src/benchmarks/insert_scenarios.py:668-671`
+
+**Problem:**
+```cypher
+MATCH (p:Profile)-[r:RATED]->(c:Content)
+WHERE r.created_at = '2025-06-15 12:00:00'
+DELETE r
+```
+Usunie wszystkie relacje RATED z ta data, nie tylko dodane w benchmarku. Moze usunac oryginalne dane.
+
+**Zmiana:** filtrowac po `content_id = self._cid` albo uzyc unikalnej daty per trial.
+
+---
+
+### 13. I2 teardown Neo4j — ten sam problem
+
+**Plik:** `app/src/benchmarks/insert_scenarios.py:243-247`
+
+**Problem:** `WHERE w.started_at = '2025-06-15 12:00:00'` usunie wszystkie WATCHED z ta data.
+
+**Zmiana:** uzyc unikalnej daty per trial lub filtrowac po zakresie ID.
+
+---
+
+## Podsumowanie priorytetu implementacji
+
+| Priorytet | Zadania | Efekt |
+|-----------|---------|-------|
+| Najpierw  | #1 (sekwencyjne), #6 (warmup) | Rzetelnosc pomiarow |
+| Potem     | #2 (MySQL LOAD DATA), #3 (I5 batch), #4-5 (MongoDB bulk_write) | Uczciwe porownanie bulk operacji |
+| Na koniec | #7-8 (wykresy), #9-11 (raport), #12-13 (teardown) | Jakosc prezentacji i poprawnosc |
+
+Po wdrozeniu zmian #1-6: **ponownie uruchomic benchmarki dla small i medium**.

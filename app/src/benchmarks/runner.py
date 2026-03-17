@@ -1,5 +1,9 @@
+import copy
 import csv
 import time
+import threading
+import traceback
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import psycopg
@@ -45,6 +49,31 @@ class BenchmarkRunner:
                 "bolt://localhost:7687", auth=("neo4j", "vod12345")
             )
 
+    def _create_connection(self, db_name: str):
+        if db_name == "postgres":
+            return psycopg.connect(
+                "host=localhost port=5432 dbname=vod user=vod password=vod123"
+            )
+        elif db_name == "mysql":
+            return pymysql.connect(
+                host="localhost", port=3306, user="vod",
+                password="vod123", database="vod",
+                autocommit=False,
+            )
+        elif db_name == "mongo":
+            client = MongoClient("localhost", 27017)
+            return client["vod"]
+        elif db_name == "neo4j":
+            return GraphDatabase.driver(
+                "bolt://localhost:7687", auth=("neo4j", "vod12345")
+            )
+
+    def _close_connection(self, db_name: str, conn) -> None:
+        if db_name == "mongo":
+            conn.client.close()
+        else:
+            conn.close()
+
     def build_context(self) -> None:
         pg = self.connections.get("postgres")
         if pg:
@@ -83,31 +112,68 @@ class BenchmarkRunner:
         scenario_ids: list[str] | None = None,
     ) -> list[dict]:
         results = []
+        results_lock = threading.Lock()
         scenarios = ALL_SCENARIOS
         if scenario_ids:
             scenarios = [s for s in scenarios if s.id in scenario_ids]
 
-        total = len(scenarios) * len(self.connections) * trials
+        db_names = list(self.connections.keys())
+        total = len(scenarios) * len(db_names) * trials
         done = 0
+        done_lock = threading.Lock()
+        print_lock = threading.Lock()
 
-        for scenario in scenarios:
-            for db_name, conn in self.connections.items():
-                times = []
-                for trial in range(1, trials + 1):
+        def run_db(scenario, db_name):
+            nonlocal done
+
+            conn = self._create_connection(db_name)
+            sc = copy.copy(scenario)
+
+            times = []
+            for trial in range(1, trials + 1):
+                with done_lock:
                     done += 1
-                    scenario.setup(db_name, conn, self.ctx)
+                    current_done = done
 
+                try:
+                    sc.setup(db_name, conn, self.ctx)
+                except Exception as exc:
+                    with print_lock:
+                        print(f"  [{current_done}/{total}] {sc.id} | {db_name:<8} | "
+                              f"trial {trial}: SETUP ERROR: {exc}")
+                        traceback.print_exc()
+                    self._try_rollback(db_name, conn)
+                    continue
+
+                try:
                     start = time.perf_counter_ns()
-                    scenario.run(db_name, conn, self.ctx)
+                    sc.run(db_name, conn, self.ctx)
                     elapsed_ms = (time.perf_counter_ns() - start) / 1_000_000
+                except Exception as exc:
+                    with print_lock:
+                        print(f"  [{current_done}/{total}] {sc.id} | {db_name:<8} | "
+                              f"trial {trial}: RUN ERROR: {exc}")
+                        traceback.print_exc()
+                    self._try_rollback(db_name, conn)
+                    try:
+                        sc.teardown(db_name, conn, self.ctx)
+                    except Exception:
+                        pass
+                    continue
 
-                    scenario.teardown(db_name, conn, self.ctx)
-                    times.append(elapsed_ms)
+                try:
+                    sc.teardown(db_name, conn, self.ctx)
+                except Exception as exc:
+                    with print_lock:
+                        print(f"  [{current_done}/{total}] {sc.id} | {db_name:<8} | "
+                              f"trial {trial}: TEARDOWN ERROR: {exc}")
 
+                times.append(elapsed_ms)
+                with results_lock:
                     results.append({
-                        "scenario_id": scenario.id,
-                        "scenario_name": scenario.name,
-                        "category": scenario.category,
+                        "scenario_id": sc.id,
+                        "scenario_name": sc.name,
+                        "category": sc.category,
                         "database": db_name,
                         "volume": self.volume,
                         "trial": trial,
@@ -115,13 +181,33 @@ class BenchmarkRunner:
                         "with_indexes": with_indexes,
                     })
 
+            if times:
                 avg = sum(times) / len(times)
-                print(
-                    f"  [{done}/{total}] {scenario.id} | {db_name:<8} | "
-                    f"avg={avg:.1f}ms  ({', '.join(f'{t:.1f}' for t in times)})"
-                )
+                with print_lock:
+                    print(
+                        f"  [{current_done}/{total}] {sc.id} | {db_name:<8} | "
+                        f"avg={avg:.1f}ms  ({', '.join(f'{t:.1f}' for t in times)})"
+                    )
+
+            self._close_connection(db_name, conn)
+
+        for scenario in scenarios:
+            with ThreadPoolExecutor(max_workers=len(db_names)) as executor:
+                futures = [
+                    executor.submit(run_db, scenario, db_name)
+                    for db_name in db_names
+                ]
+                for f in futures:
+                    f.result()
 
         return results
+
+    def _try_rollback(self, db_name: str, conn) -> None:
+        if db_name in ("postgres", "mysql") and hasattr(conn, "rollback"):
+            try:
+                conn.rollback()
+            except Exception:
+                pass
 
     def save_results(self, results: list[dict], filename: str) -> Path:
         filepath = self.results_dir / filename

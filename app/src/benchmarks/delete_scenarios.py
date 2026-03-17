@@ -260,60 +260,95 @@ class D3_CleanOldHistory(BaseScenario):
     name = "Clean old watch history"
     category = "DELETE"
 
+    _TEST_DATE = "2000-01-15 12:00:00"
+    _TEST_CUTOFF = "2000-06-01"
+
     def setup_postgres(self, conn, ctx):
-        cutoff = ctx.params["old_history_cutoff"]
+        n = ctx.params["batch_watch_history"]
         conn.execute("""
-            CREATE TEMP TABLE IF NOT EXISTS _d3_backup
-            AS SELECT * FROM watch_history WHERE started_at < %s
-        """, (cutoff,))
+            INSERT INTO watch_history
+                (profile_id, content_id, started_at, progress_percent, completed)
+            SELECT
+                (floor(random() * %s) + 1)::BIGINT,
+                (floor(random() * %s) + 1)::BIGINT,
+                %s::TIMESTAMP,
+                0, FALSE
+            FROM generate_series(1, %s)
+        """, (ctx.max_ids["profiles"], ctx.max_ids["content"],
+              self._TEST_DATE, n))
         conn.commit()
-        self._cutoff = cutoff
 
     def setup_mysql(self, conn, ctx):
-        cutoff = ctx.params["old_history_cutoff"]
+        n = ctx.params["batch_watch_history"]
         cur = conn.cursor()
-        cur.execute("DROP TABLE IF EXISTS _d3_backup")
-        cur.execute("""
-            CREATE TABLE _d3_backup
-            AS SELECT * FROM watch_history WHERE started_at < %s
-        """, (cutoff,))
-        conn.commit()
-        self._cutoff = cutoff
+        rows = [
+            (random.randint(1, ctx.max_ids["profiles"]),
+             random.randint(1, ctx.max_ids["content"]),
+             self._TEST_DATE, 0, 0)
+            for _ in range(n)
+        ]
+        for i in range(0, n, 10_000):
+            cur.executemany(
+                "INSERT INTO watch_history"
+                " (profile_id, content_id, started_at,"
+                " progress_percent, completed)"
+                " VALUES (%s, %s, %s, %s, %s)",
+                rows[i:i + 10_000],
+            )
+            conn.commit()
 
     def setup_mongo(self, db, ctx):
-        self._cutoff = ctx.params["old_history_cutoff"]
-        self._backup = list(
-            db.watch_history.find({"started_at": {"$lt": self._cutoff}})
-        )
+        n = ctx.params["batch_watch_history"]
+        base_wid = ctx.test_id("watch_history") + 400_000
+        for i in range(0, n, 10_000):
+            batch_size = min(10_000, n - i)
+            docs = [
+                {
+                    "_id": base_wid + i + j,
+                    "profile_id": random.randint(1, ctx.max_ids["profiles"]),
+                    "content_id": random.randint(1, ctx.max_ids["content"]),
+                    "started_at": self._TEST_DATE,
+                    "progress_percent": 0,
+                    "completed": False,
+                }
+                for j in range(batch_size)
+            ]
+            db.watch_history.insert_many(docs, ordered=False)
 
     def setup_neo4j(self, driver, ctx):
-        self._cutoff = ctx.params["old_history_cutoff"]
+        n = ctx.params["batch_watch_history"]
+        rows = [
+            {"pid": random.randint(1, ctx.max_ids["profiles"]),
+             "cid": random.randint(1, ctx.max_ids["content"])}
+            for _ in range(n)
+        ]
         with driver.session() as s:
-            result = s.run("""
-                MATCH (p:Profile)-[w:WATCHED]->(c:Content)
-                WHERE w.started_at < $cutoff
-                RETURN p.profile_id AS pid, c.content_id AS cid,
-                       w.started_at AS started_at,
-                       w.progress_percent AS progress,
-                       w.completed AS completed
-            """, cutoff=self._cutoff)
-            self._backup = [dict(r) for r in result]
+            for j in range(0, n, 5000):
+                s.run("""
+                    UNWIND $rows AS r
+                    MATCH (p:Profile {profile_id: r.pid})
+                    MATCH (c:Content {content_id: r.cid})
+                    CREATE (p)-[:WATCHED {started_at: $date,
+                        progress_percent: 0, completed: false}]->(c)
+                """, rows=rows[j:j + 5000], date=self._TEST_DATE).consume()
 
     def run_postgres(self, conn, ctx):
         conn.execute(
-            "DELETE FROM watch_history WHERE started_at < %s", (self._cutoff,)
+            "DELETE FROM watch_history WHERE started_at < %s",
+            (self._TEST_CUTOFF,),
         )
         conn.commit()
 
     def run_mysql(self, conn, ctx):
         cur = conn.cursor()
         cur.execute(
-            "DELETE FROM watch_history WHERE started_at < %s", (self._cutoff,)
+            "DELETE FROM watch_history WHERE started_at < %s",
+            (self._TEST_CUTOFF,),
         )
         conn.commit()
 
     def run_mongo(self, db, ctx):
-        db.watch_history.delete_many({"started_at": {"$lt": self._cutoff}})
+        db.watch_history.delete_many({"started_at": {"$lt": self._TEST_CUTOFF}})
 
     def run_neo4j(self, driver, ctx):
         with driver.session() as s:
@@ -324,48 +359,10 @@ class D3_CleanOldHistory(BaseScenario):
                     WITH w LIMIT 10000
                     DELETE w
                     RETURN count(*) AS deleted
-                """, cutoff=self._cutoff)
+                """, cutoff=self._TEST_CUTOFF)
                 deleted = result.single()["deleted"]
                 if deleted == 0:
                     break
-
-    def teardown_postgres(self, conn, ctx):
-        conn.execute("""
-            INSERT INTO watch_history
-            SELECT * FROM _d3_backup
-        """)
-        conn.execute("DROP TABLE IF EXISTS _d3_backup")
-        conn.commit()
-
-    def teardown_mysql(self, conn, ctx):
-        cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO watch_history
-            SELECT * FROM _d3_backup
-        """)
-        cur.execute("DROP TABLE IF EXISTS _d3_backup")
-        conn.commit()
-
-    def teardown_mongo(self, db, ctx):
-        if self._backup:
-            for i in range(0, len(self._backup), 5000):
-                db.watch_history.insert_many(
-                    self._backup[i:i + 5000], ordered=False
-                )
-
-    def teardown_neo4j(self, driver, ctx):
-        if self._backup:
-            with driver.session() as s:
-                for j in range(0, len(self._backup), 5000):
-                    batch = self._backup[j:j + 5000]
-                    s.run("""
-                        UNWIND $rows AS r
-                        MATCH (p:Profile {profile_id: r.pid})
-                        MATCH (c:Content {content_id: r.cid})
-                        CREATE (p)-[:WATCHED {started_at: r.started_at,
-                            progress_percent: r.progress,
-                            completed: r.completed}]->(c)
-                    """, rows=batch).consume()
 
 
 class D4_RemoveFromMyList(BaseScenario):
