@@ -123,7 +123,7 @@ class BenchmarkRunner:
                 conn = self._create_connection(db_name)
                 sc = copy.copy(scenario)
 
-                self._warmup(sc, db_name, conn)
+                self._flush_caches(db_name, conn)
 
                 times = []
                 for trial in range(1, trials + 1):
@@ -182,17 +182,27 @@ class BenchmarkRunner:
 
         return results
 
-    def _warmup(self, sc, db_name: str, conn) -> None:
+    def _flush_caches(self, db_name: str, conn) -> None:
         try:
-            sc.setup(db_name, conn, self.ctx)
-            sc.run(db_name, conn, self.ctx)
-            sc.teardown(db_name, conn, self.ctx)
+            if db_name == "postgres":
+                conn.autocommit = True
+                conn.execute("DISCARD ALL")
+                conn.autocommit = False
+            elif db_name == "mysql":
+                cur = conn.cursor()
+                cur.execute("FLUSH TABLES")
+                cur.close()
+            elif db_name == "mongo":
+                for coll in ("users", "content", "watch_history", "ratings", "payments"):
+                    try:
+                        conn.command("planCacheClear", coll)
+                    except Exception:
+                        pass
+            elif db_name == "neo4j":
+                with conn.session() as s:
+                    s.run("CALL db.clearQueryCaches()").consume()
         except Exception:
-            self._try_rollback(db_name, conn)
-            try:
-                sc.teardown(db_name, conn, self.ctx)
-            except Exception:
-                pass
+            pass
 
     def _try_rollback(self, db_name: str, conn) -> None:
         if db_name in ("postgres", "mysql") and hasattr(conn, "rollback"):

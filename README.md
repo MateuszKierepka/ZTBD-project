@@ -1,7 +1,5 @@
 # Plan realizacji projektu ZTBD — Platforma VOD
 
-**Cel:** Ocena 5.0
-
 **Technologie:** PostgreSQL | MySQL | MongoDB | Neo4j, Python 3.12+
 
 ---
@@ -9,29 +7,35 @@
 ## Struktura projektu
 
 ```
-project/
-├── docker-compose.yml          # 4 bazy danych
+app/
+├── docker-compose.yml              # 4 bazy danych
 ├── docker/
-│   ├── postgres/init.sql       # schemat + indeksy PostgreSQL
-│   ├── mysql/init.sql          # schemat + indeksy MySQL
-│   └── neo4j/                  # konfiguracja
+│   ├── postgres/init.sql           # schemat PostgreSQL (DDL, bez indeksow)
+│   └── mysql/init.sql              # schemat MySQL (DDL, bez indeksow)
+├── main.py                         # CLI entry point (generate/load/benchmark/explain/visualize/run-all)
 ├── src/
-│   ├── config.py               # connection strings, stale
+│   ├── config.py                   # wolumeny, parametry generowania
 │   ├── generators/
-│   │   └── data_generator.py   # Faker-based generator
+│   │   └── data_generator.py       # Faker-based generator (12 tabel CSV)
 │   ├── loaders/
-│   │   ├── postgres_loader.py
-│   │   ├── mysql_loader.py
-│   │   ├── mongo_loader.py
-│   │   └── neo4j_loader.py
+│   │   ├── postgres_loader.py      # COPY FROM + create/drop indexes
+│   │   ├── mysql_loader.py         # LOAD DATA + create/drop indexes
+│   │   ├── mongo_loader.py         # insert_many + create indexes
+│   │   └── neo4j_loader.py         # UNWIND + CREATE + create indexes
 │   ├── benchmarks/
-│   │   ├── runner.py           # orkiestracja testow
-│   │   ├── scenarios.py        # 24 scenariusze CRUD
-│   │   └── explain_analyzer.py # EXPLAIN ANALYZE
+│   │   ├── base.py                 # BaseScenario, BenchmarkContext, VOLUME_PARAMS
+│   │   ├── runner.py               # orkiestracja testow + flush cache
+│   │   ├── insert_scenarios.py     # I1-I6
+│   │   ├── select_scenarios.py     # S1-S6
+│   │   ├── update_scenarios.py     # U1-U6
+│   │   ├── delete_scenarios.py     # D1-D6
+│   │   └── explain_analyzer.py     # EXPLAIN/PROFILE dla S1-S6
 │   └── analysis/
-│       ├── results_analyzer.py
-│       └── visualizer.py       # wykresy matplotlib/plotly
-├── results/                    # wyniki benchmarkow (CSV/JSON)
+│       └── visualizer.py           # wykresy matplotlib
+├── data/                           # wygenerowane CSV (small/medium/large)
+├── results/                        # wyniki benchmarkow (CSV/JSON)
+│   ├── charts/                     # wygenerowane wykresy PNG
+│   └── explain/                    # plany zapytan JSON
 ├── requirements.txt
 └── README.md
 ```
@@ -43,17 +47,17 @@ project/
 ### Faza 0 — Infrastruktura Docker
 
 - `docker-compose.yml` z 4 serwisami:
-  - `postgres:17` — port 5432
-  - `mysql:9.2` — port 3306
-  - `mongo:8` — port 27017
-  - `neo4j:5` — port 7687 (Bolt) + 7474 (HTTP)
+  - `postgres:17` — port 5432, limit 2 GB RAM
+  - `mysql:8.0` — port 3306, limit 2 GB RAM
+  - `mongo:8.0` — port 27017, limit 2 GB RAM
+  - `neo4j:2026.02.2` — port 7687 (Bolt) + 7474 (HTTP), limit 4 GB RAM (heap 1 GB)
 - Wolumeny Docker dla persystencji danych
 - Ograniczenia pamieci per kontener (fair benchmarki)
 
 ### Faza 1 — Schematy baz danych
 
-- **PostgreSQL** — DDL 12 tabel wg schematu v3 (FK, CHECK, UNIQUE), BEZ indeksow (dodamy osobno)
-- **MySQL** — analogiczny DDL (InnoDB), roznice skladniowe (BIGSERIAL -> BIGINT AUTO_INCREMENT)
+- **PostgreSQL** — DDL 12 tabel (FK, CHECK, UNIQUE), indeksy tworzone osobno przez loader
+- **MySQL** — analogiczny DDL (InnoDB), roznice skladniowe (BIGSERIAL -> BIGINT AUTO_INCREMENT), indeksy przez loader
 - **MongoDB** — 5 kolekcji (users, content, watch_history, ratings, payments) + JSON Schema validation
 - **Neo4j** — constraints (unique) na node labels, relacje wg sekcji 9 schematu
 
@@ -123,16 +127,34 @@ project/
 - Mierzenie czasu: `time.perf_counter_ns()` (nanosekundowa precyzja)
 - Wyniki do CSV: `scenario, database, volume, trial, time_ms`
 - Testy BEZ indeksow -> dodanie indeksow -> te same testy Z indeksami
-- **Indeksy na WSZYSTKICH 4 bazach:**
-  - PostgreSQL: B-tree, GIN (full-text, jsonb), partial indexes
-  - MySQL: B-tree, FULLTEXT, functional indexes
-  - MongoDB: compound indexes, text indexes, partial indexes
-  - Neo4j: property indexes (RANGE, TEXT, POINT), composite indexes
+
+**Cold start (brak warm-upow):**
+- Przed scenariuszem NIE wykonujemy rozgrzewki — trial 1 zawsze startuje "na zimno"
+- Dzieki temu trial 1 jest naturalnie wolniejszy od kolejnych (efekt cold start)
+- Pozwala to zaobserwowac wplyw cache'owania silnika bazodanowego na wydajnosc
+- Trialy 2 i 3 korzystaja z "rozgrzanego" cache (buffer pool, plan cache)
+
+**Czyszczenie cache miedzy scenariuszami:**
+- Przed kazdym scenariuszem tworzone jest nowe polaczenie (per sesja = czysty stan sesji)
+- Dodatkowo miedzy scenariuszami czyszczone sa cache na poziomie silnika:
+  - PostgreSQL: `DISCARD ALL` (reset prepared statements, parametrow sesji)
+  - MySQL: `FLUSH TABLES` (zamkniecie i ponowne otwarcie plikow tabel)
+  - MongoDB: `planCacheClear` na kolekcjach (czyszczenie cache planow zapytan)
+  - Neo4j: `CALL db.clearQueryCaches()` (czyszczenie cache planow Cypher)
+- Cache na poziomie buffer pool (shared_buffers, InnoDB buffer pool, WiredTiger cache)
+  nie moze byc czyszczony bez restartu serwera — to ograniczenie systemowe,
+  niezalezne od aplikacji benchmarkowej
+
+**Indeksy na WSZYSTKICH 4 bazach:**
+  - PostgreSQL: B-tree, GIN (trigram full-text, JSONB), partial indexes (17 indeksow)
+  - MySQL: B-tree, FULLTEXT, functional indexes na JSON (10 indeksow)
+  - MongoDB: compound indexes, text indexes, unique indexes (15 indeksow)
+  - Neo4j: property indexes (RANGE, TEXT), uniqueness constraints (9 indeksow + 9 constraints)
 
 ### Faza 5 — Analiza EXPLAIN
 
 - PostgreSQL: `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)`
-- MySQL: `EXPLAIN ANALYZE`
+- MySQL: `EXPLAIN FORMAT=JSON`
 - MongoDB: `.explain("executionStats")`
 - Neo4j: `PROFILE` prefix do zapytan Cypher
 - Porownanie planow przed i po indeksach
