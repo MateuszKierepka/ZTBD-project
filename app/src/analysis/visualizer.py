@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib
+from matplotlib.patches import Patch
 import numpy as np
 
 matplotlib.use("Agg")
@@ -23,6 +24,8 @@ DB_LABELS = {
 }
 
 CATEGORY_ORDER = ["INSERT", "SELECT", "UPDATE", "DELETE"]
+
+VOLUME_ORDER = {"small": 0, "medium": 1, "large": 2}
 
 
 class Visualizer:
@@ -76,7 +79,16 @@ class Visualizer:
 
         explain_files = sorted(self.results_dir.glob("explain/explain_*.json"))
         if explain_files:
-            files.append(self._chart_explain_summary(explain_files))
+            explain_data = self._load_explain_data(explain_files)
+            if explain_data:
+                explain_volumes = sorted(
+                    set(d["volume"] for d in explain_data),
+                    key=lambda v: VOLUME_ORDER.get(v, 99))
+                for vol in explain_volumes:
+                    vol_data = [d for d in explain_data if d["volume"] == vol]
+                    files.append(self._chart_explain_scan_changes(vol_data, vol))
+                    files.append(self._chart_explain_rows_reduction(vol_data, vol))
+                    files.append(self._chart_explain_exec_time(vol_data, vol))
 
         print(f"\n  Generated {len(files)} charts in {self.output_dir}")
         return files
@@ -330,8 +342,7 @@ class Visualizer:
                                volumes: list[str]) -> Path:
         avg = self._median(df)
         databases = ["postgres", "mysql", "mongo", "neo4j"]
-        volume_order = {"small": 0, "medium": 1, "large": 2}
-        volumes = sorted(volumes, key=lambda v: volume_order.get(v, 99))
+        volumes = sorted(volumes, key=lambda v: VOLUME_ORDER.get(v, 99))
 
         fig, axes = plt.subplots(2, 2, figsize=(16, 12))
         fig.suptitle("Skalowalność — wpływ wolumenu danych na wydajność (mediana)",
@@ -403,7 +414,7 @@ class Visualizer:
         plt.close(fig)
         return path
 
-    def _chart_explain_summary(self, explain_files: list[Path]) -> Path:
+    def _load_explain_data(self, explain_files: list[Path]) -> list[dict]:
         all_data = []
         for f in explain_files:
             with open(f, encoding="utf-8") as fh:
@@ -416,93 +427,254 @@ class Visualizer:
                 for db_name, summary in sdata.get("summary", {}).items():
                     if "error" in summary:
                         continue
-                    time_val = None
-                    if db_name == "postgres":
-                        time_val = summary.get("execution_time_ms", 0)
-                    elif db_name == "mongo":
-                        time_val = summary.get("execution_time_ms", 0)
-                    elif db_name == "neo4j":
-                        time_val = summary.get("total_db_hits", 0)
 
                     scan_info = ""
+                    rows_examined = None
+                    exec_time = None
+
                     if db_name == "postgres":
                         scans = summary.get("scan_types", [])
-                        scan_info = ", ".join(s["type"] for s in scans)
-                    elif db_name == "mongo":
-                        scan_info = summary.get("scan_type", "")
+                        unique_scans = list(dict.fromkeys(s["type"] for s in scans))
+                        scan_info = ", ".join(unique_scans)
+                        rows_examined = sum(s.get("rows", 0) for s in scans)
+                        exec_time = summary.get("execution_time_ms")
                     elif db_name == "mysql":
                         tables = summary.get("tables", [])
-                        scan_info = ", ".join(t.get("access_type", "") for t in tables)
+                        unique_access = list(dict.fromkeys(
+                            t.get("access_type", "") for t in tables if t.get("access_type")))
+                        scan_info = ", ".join(unique_access)
+                        rows_examined = sum(t.get("rows_examined", 0) for t in tables)
+                    elif db_name == "mongo":
+                        scan_info = summary.get("scan_type", "")
+                        rows_examined = summary.get("total_docs_examined")
+                        exec_time = summary.get("execution_time_ms")
+                    elif db_name == "neo4j":
+                        ops = summary.get("operators", [])
+                        scan_ops = [o for o in ops if "Scan" in o or "Seek" in o]
+                        scan_info = ", ".join(scan_ops) if scan_ops else ops[-1] if ops else ""
+                        scan_info = scan_info.replace("@neo4j", "")
+                        rows_examined = summary.get("total_db_hits")
 
                     all_data.append({
                         "scenario_id": sid,
+                        "scenario_name": sdata.get("name", ""),
                         "database": db_name,
                         "volume": volume,
                         "index_label": label,
-                        "time_or_hits": time_val,
                         "scan_info": scan_info,
+                        "rows_examined": rows_examined,
+                        "exec_time_ms": exec_time,
                     })
+        return all_data
 
-        if not all_data:
-            fig, ax = plt.subplots(figsize=(8, 4))
-            ax.text(0.5, 0.5, "Brak danych EXPLAIN", ha="center", va="center",
-                   fontsize=14)
-            path = self.output_dir / "explain_summary.png"
-            fig.savefig(path, dpi=150)
+    def _chart_explain_scan_changes(self, all_data: list[dict], volume: str) -> Path:
+        scenarios = sorted(set(d["scenario_id"] for d in all_data))
+        databases = ["postgres", "mysql", "mongo", "neo4j"]
+
+        lookup = {}
+        for d in all_data:
+            lookup[(d["scenario_id"], d["database"], d["index_label"])] = d
+
+        has_both = any(d["index_label"] == "no_indexes" for d in all_data) and \
+                   any(d["index_label"] == "with_indexes" for d in all_data)
+
+        scan_matrix = []
+        for sid in scenarios:
+            row = []
+            for db in databases:
+                before = lookup.get((sid, db, "no_indexes"), {})
+                after = lookup.get((sid, db, "with_indexes"), {})
+                scan_before = before.get("scan_info", "—")
+                scan_after = after.get("scan_info", "—")
+                if has_both and scan_before and scan_after:
+                    row.append((scan_before, scan_after))
+                else:
+                    row.append((scan_before, ""))
+            scan_matrix.append(row)
+
+        color_matrix = np.ones((len(scenarios), len(databases)))
+        for i, row in enumerate(scan_matrix):
+            for j, (before, after) in enumerate(row):
+                if not has_both or not after or before == after:
+                    color_matrix[i, j] = 0.5
+                elif before != after:
+                    color_matrix[i, j] = 0.0
+
+        fig, ax = plt.subplots(figsize=(16, 8))
+
+        cmap = plt.cm.colors.ListedColormap(["#81C784", "#FFF9C4", "#E0E0E0"])
+        bounds = [-0.25, 0.25, 0.75, 1.25]
+        norm = plt.cm.colors.BoundaryNorm(bounds, cmap.N)
+        ax.imshow(color_matrix, cmap=cmap, norm=norm, aspect="auto")
+
+        for i, row in enumerate(scan_matrix):
+            for j, (before, after) in enumerate(row):
+                if has_both and after and before != after:
+                    text = f"{before}\n->\n{after}"
+                elif has_both and after:
+                    text = before
+                else:
+                    text = before
+                ax.text(j, i, text, ha="center", va="center", fontsize=7,
+                       fontweight="bold" if has_both and after and before != after else "normal")
+
+        ax.set_xticks(range(len(databases)))
+        ax.set_xticklabels([DB_LABELS[db] for db in databases], fontsize=11)
+        ax.set_yticks(range(len(scenarios)))
+        snames = []
+        for sid in scenarios:
+            entry = next((d for d in all_data if d["scenario_id"] == sid), {})
+            snames.append(f"{sid}: {entry.get('scenario_name', '')}")
+        ax.set_yticklabels(snames, fontsize=9)
+
+        legend_elements = [
+            Patch(facecolor="#81C784", label="Zmiana typu skanu (indeks pomaga)"),
+            Patch(facecolor="#FFF9C4", label="Brak zmiany"),
+            Patch(facecolor="#E0E0E0", label="Brak danych porownawczych"),
+        ]
+        if has_both:
+            ax.legend(handles=legend_elements, loc="upper center",
+                     bbox_to_anchor=(0.5, -0.05), ncol=3, fontsize=9)
+
+        ax.set_title(f"EXPLAIN — zmiana typu skanu po dodaniu indeksow (wolumen {volume})",
+                    fontsize=14, fontweight="bold")
+
+        plt.tight_layout()
+        path = self.output_dir / f"explain_scan_changes_{volume}.png"
+        fig.savefig(path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        return path
+
+    def _chart_explain_rows_reduction(self, all_data: list[dict], volume: str) -> Path:
+        scenarios = sorted(set(d["scenario_id"] for d in all_data))
+        databases = ["postgres", "mysql", "mongo", "neo4j"]
+
+        lookup = {}
+        for d in all_data:
+            lookup[(d["scenario_id"], d["database"], d["index_label"])] = d
+
+        has_both = any(d["index_label"] == "no_indexes" for d in all_data) and \
+                   any(d["index_label"] == "with_indexes" for d in all_data)
+
+        if not has_both:
+            fig, ax = plt.subplots(figsize=(14, 7))
+            x = np.arange(len(scenarios))
+            width = 0.18
+            for i, db in enumerate(databases):
+                values = []
+                for sid in scenarios:
+                    entry = lookup.get((sid, db, "no_indexes"), {})
+                    values.append(entry.get("rows_examined") or 0)
+                ax.bar(x + i * width, values, width, label=DB_LABELS[db],
+                      color=DB_COLORS[db])
+            ax.set_xticks(x + width * 1.5)
+            ax.set_xticklabels(scenarios)
+            ax.set_ylabel("Przejrzane wiersze/dokumenty")
+            ax.set_title(f"EXPLAIN — liczba przejrzanych wierszy (wolumen {volume})",
+                        fontsize=14, fontweight="bold")
+            ax.legend()
+            ax.grid(axis="y", alpha=0.3)
+            self._auto_log_scale(ax)
+            plt.tight_layout()
+            path = self.output_dir / f"explain_rows_examined_{volume}.png"
+            fig.savefig(path, dpi=150, bbox_inches="tight")
             plt.close(fig)
             return path
 
-        edf = pd.DataFrame(all_data)
+        fig, axes = plt.subplots(1, 2, figsize=(18, 7))
 
-        pg_data = edf[edf["database"] == "postgres"]
-        if pg_data.empty:
-            pg_data = edf
+        for ax_idx, (ilabel, title) in enumerate([
+            ("no_indexes", "Bez indeksow"),
+            ("with_indexes", "Z indeksami"),
+        ]):
+            ax = axes[ax_idx]
+            x = np.arange(len(scenarios))
+            width = 0.18
+            for i, db in enumerate(databases):
+                values = []
+                for sid in scenarios:
+                    entry = lookup.get((sid, db, ilabel), {})
+                    values.append(entry.get("rows_examined") or 0)
+                bars = ax.bar(x + i * width, values, width, label=DB_LABELS[db],
+                             color=DB_COLORS[db])
+                for bar, val in zip(bars, values):
+                    if val > 0:
+                        if val >= 1_000_000:
+                            txt = f"{val/1_000_000:.1f}M"
+                        elif val >= 1_000:
+                            txt = f"{val/1_000:.0f}K"
+                        else:
+                            txt = str(val)
+                        ax.text(bar.get_x() + bar.get_width() / 2,
+                                bar.get_height(), txt,
+                                ha="center", va="bottom", fontsize=6, rotation=45)
+            ax.set_title(title, fontsize=12)
+            ax.set_xticks(x + width * 1.5)
+            ax.set_xticklabels(scenarios)
+            ax.set_ylabel("Przejrzane wiersze / dokumenty / db_hits")
+            ax.legend(fontsize=8)
+            ax.grid(axis="y", alpha=0.3)
+            self._auto_log_scale(ax)
 
-        scenarios = sorted(pg_data["scenario_id"].unique())
-        volumes = sorted(pg_data["volume"].unique())
-        index_labels = sorted(pg_data["index_label"].unique())
+        fig.suptitle(
+            f"EXPLAIN — liczba przejrzanych wierszy przed i po indeksach (wolumen {volume})",
+            fontsize=14, fontweight="bold",
+        )
+        plt.tight_layout()
+        path = self.output_dir / f"explain_rows_examined_{volume}.png"
+        fig.savefig(path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        return path
 
-        fig, axes = plt.subplots(1, len(index_labels),
-                                figsize=(8 * len(index_labels), 6))
-        if len(index_labels) == 1:
+    def _chart_explain_exec_time(self, all_data: list[dict], volume: str) -> Path:
+        time_dbs = ["postgres", "mongo"]
+        scenarios = sorted(set(d["scenario_id"] for d in all_data))
+
+        lookup = {}
+        for d in all_data:
+            lookup[(d["scenario_id"], d["database"], d["index_label"])] = d
+
+        index_labels = sorted(set(d["index_label"] for d in all_data))
+        has_both = len(index_labels) == 2
+
+        if has_both:
+            fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+        else:
+            fig, axes = plt.subplots(1, 1, figsize=(8, 6))
             axes = [axes]
 
-        fig.suptitle("EXPLAIN — czas wykonania zapytań SELECT (PostgreSQL)",
-                     fontsize=14, fontweight="bold")
+        fig.suptitle(
+            f"EXPLAIN — czas wykonania zapytan SELECT, wolumen {volume} (PostgreSQL vs MongoDB)",
+            fontsize=14, fontweight="bold",
+        )
 
         for ax, ilabel in zip(axes, index_labels):
-            il_data = pg_data[pg_data["index_label"] == ilabel]
             x = np.arange(len(scenarios))
-            width = 0.25
-            vol_colors = {"small": "#5DA5DA", "medium": "#FAA43A", "large": "#F17CB0"}
-
-            for i, vol in enumerate(volumes):
-                vdata = il_data[il_data["volume"] == vol]
-                values = [
-                    vdata[vdata["scenario_id"] == s]["time_or_hits"].values[0]
-                    if s in vdata["scenario_id"].values
-                    and vdata[vdata["scenario_id"] == s]["time_or_hits"].values[0] is not None
-                    else 0
-                    for s in scenarios
-                ]
-                bars = ax.bar(x + i * width, values, width, label=f"{vol}",
-                             color=vol_colors.get(vol, "#999999"))
+            width = 0.3
+            for i, db in enumerate(time_dbs):
+                values = []
+                for sid in scenarios:
+                    entry = lookup.get((sid, db, ilabel), {})
+                    values.append(entry.get("exec_time_ms") or 0)
+                bars = ax.bar(x + i * width, values, width,
+                             label=DB_LABELS[db], color=DB_COLORS[db])
                 for bar, val in zip(bars, values):
-                    if val and val > 0:
+                    if val > 0:
                         ax.text(bar.get_x() + bar.get_width() / 2,
-                                bar.get_height(), f"{val:.2f}",
+                                bar.get_height(), f"{val:.1f}",
                                 ha="center", va="bottom", fontsize=7)
 
-            title_label = "z indeksami" if "with" in ilabel else "bez indeksów"
-            ax.set_title(f"{title_label}", fontsize=12)
-            ax.set_xticks(x + width * (len(volumes) - 1) / 2)
+            title_label = "z indeksami" if "with" in ilabel else "bez indeksow"
+            ax.set_title(title_label, fontsize=12)
+            ax.set_xticks(x + width / 2)
             ax.set_xticklabels(scenarios)
             ax.set_ylabel("Czas wykonania [ms]")
             ax.legend(fontsize=9)
             ax.grid(axis="y", alpha=0.3)
+            self._auto_log_scale(ax)
 
         plt.tight_layout()
-        path = self.output_dir / "explain_summary.png"
+        path = self.output_dir / f"explain_exec_time_{volume}.png"
         fig.savefig(path, dpi=150, bbox_inches="tight")
         plt.close(fig)
         return path
