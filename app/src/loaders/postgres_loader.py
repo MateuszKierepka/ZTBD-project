@@ -84,6 +84,11 @@ class PostgresLoader:
         total_start = time.perf_counter()
 
         with psycopg.connect(self.conn_string) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SET maintenance_work_mem = '512MB'")
+                cur.execute("SET work_mem = '64MB'")
+            conn.commit()
+
             self._truncate_all(conn)
 
             for table in TABLES:
@@ -118,7 +123,7 @@ class PostgresLoader:
         with conn.cursor() as cur:
             with cur.copy(copy_sql) as copy:
                 with open(csv_path, "rb") as f:
-                    while chunk := f.read(65536):
+                    while chunk := f.read(8 * 1024 * 1024):
                         copy.write(chunk)
         conn.commit()
 

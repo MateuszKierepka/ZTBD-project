@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pymongo import MongoClient, ASCENDING, DESCENDING
 
-BATCH_SIZE = 5000
+BATCH_SIZE = 25000
 
 
 class MongoLoader:

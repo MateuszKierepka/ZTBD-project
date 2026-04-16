@@ -11,6 +11,24 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=512MB"
+      - "-c"
+      - "work_mem=64MB"
+      - "-c"
+      - "maintenance_work_mem=512MB"
+      - "-c"
+      - "effective_cache_size=1536MB"
+      - "-c"
+      - "wal_buffers=16MB"
+      - "-c"
+      - "checkpoint_completion_target=0.9"
+      - "-c"
+      - "max_wal_size=2GB"
+      - "-c"
+      - "synchronous_commit=off"
     deploy:
       resources:
         limits:
@@ -29,6 +47,17 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
       - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    command:
+      - "--innodb-buffer-pool-size=1073741824"
+      - "--innodb-log-file-size=256M"
+      - "--innodb-flush-log-at-trx-commit=2"
+      - "--innodb-flush-method=O_DIRECT"
+      - "--innodb-doublewrite=0"
+      - "--innodb-change-buffering=all"
+      - "--bulk-insert-buffer-size=256M"
+      - "--local-infile=1"
+      - "--max-allowed-packet=256M"
+      - "--innodb-autoinc-lock-mode=2"
     deploy:
       resources:
         limits:
@@ -43,6 +72,7 @@ services:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
+    command: ["mongod", "--wiredTigerCacheSizeGB", "1.2"]
     deploy:
       resources:
         limits:
@@ -56,7 +86,8 @@ services:
       NEO4J_PLUGINS: '["apoc"]'
       NEO4J_server_memory_heap_initial__size: 1g
       NEO4J_server_memory_heap_max__size: 1g
-      NEO4J_dbms_memory_transaction_total_max: 1g
+      NEO4J_server_memory_pagecache_size: 1g
+      NEO4J_dbms_memory_transaction_total_max: 3g
     ports:
       - "7474:7474"
       - "7687:7687"

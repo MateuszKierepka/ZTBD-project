@@ -4,7 +4,7 @@ from pathlib import Path
 
 from neo4j import GraphDatabase
 
-BATCH_SIZE = 5000
+BATCH_SIZE = 25000
 
 
 class Neo4jLoader:

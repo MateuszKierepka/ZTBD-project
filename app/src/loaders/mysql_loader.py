@@ -10,7 +10,14 @@ TABLES = [
     "watch_history", "my_list", "ratings",
 ]
 
-BATCH_SIZE = 5000
+BATCH_SIZE = 50000
+
+_BOOL_COLUMNS = {
+    "profiles": ["is_kids"],
+    "subscriptions": ["auto_renew"],
+    "content": ["is_active"],
+    "watch_history": ["completed"],
+}
 
 _MYSQL_INDEXES = [
     ("users", "CREATE INDEX idx_users_status ON users (status)"),
@@ -46,8 +53,8 @@ class MySQLLoader:
         data_dir: Path,
         host: str = "localhost",
         port: int = 3306,
-        user: str = "vod",
-        password: str = "vod123",
+        user: str = "root",
+        password: str = "root123",
         database: str = "vod",
     ):
         self.data_dir = data_dir
@@ -58,6 +65,7 @@ class MySQLLoader:
             password=password,
             database=database,
             charset="utf8mb4",
+            local_infile=True,
         )
 
     def load_all(self) -> None:
@@ -104,28 +112,64 @@ class MySQLLoader:
             print(f"  WARNING: {table}.csv not found, skipping")
             return
 
+        start = time.perf_counter()
+        bool_cols = _BOOL_COLUMNS.get(table)
+
+        if bool_cols:
+            self._load_table_with_bool_conversion(conn, table, csv_path, bool_cols)
+        else:
+            self._load_table_direct(conn, table, csv_path)
+
+        conn.commit()
+        elapsed = time.perf_counter() - start
+        print(f"  {table}: loaded ({elapsed:.1f}s)")
+
+    def _load_table_direct(self, conn: pymysql.Connection, table: str, csv_path: Path) -> None:
+        abs_path = csv_path.resolve().as_posix()
+        with conn.cursor() as cur:
+            sql = (
+                f"LOAD DATA LOCAL INFILE '{abs_path}' "
+                f"INTO TABLE {table} "
+                f"FIELDS TERMINATED BY ',' "
+                f"OPTIONALLY ENCLOSED BY '\"' "
+                f"LINES TERMINATED BY '\\n' "
+                f"IGNORE 1 LINES"
+            )
+            cur.execute(sql)
+
+    def _load_table_with_bool_conversion(
+        self, conn: pymysql.Connection, table: str, csv_path: Path, bool_cols: list[str]
+    ) -> None:
         with open(csv_path, "r", encoding="utf-8") as f:
             reader = csv.reader(f)
             columns = next(reader)
 
-            col_str = ", ".join(columns)
-            placeholders = ", ".join(["%s"] * len(columns))
-            sql = f"INSERT INTO {table} ({col_str}) VALUES ({placeholders})"
+        var_names = []
+        set_clauses = []
+        for col in columns:
+            if col in bool_cols:
+                var = f"@raw_{col}"
+                var_names.append(var)
+                set_clauses.append(f"{col} = ({var} = 'true')")
+            else:
+                var_names.append(col)
 
-            batch = []
-            for row in reader:
-                batch.append([_convert(v) for v in row])
+        abs_path = csv_path.resolve().as_posix()
+        col_list = ", ".join(var_names)
+        set_str = ", ".join(set_clauses)
 
-                if len(batch) >= BATCH_SIZE:
-                    with conn.cursor() as cur:
-                        cur.executemany(sql, batch)
-                    conn.commit()
-                    batch = []
-
-            if batch:
-                with conn.cursor() as cur:
-                    cur.executemany(sql, batch)
-                conn.commit()
+        with conn.cursor() as cur:
+            sql = (
+                f"LOAD DATA LOCAL INFILE '{abs_path}' "
+                f"INTO TABLE {table} "
+                f"FIELDS TERMINATED BY ',' "
+                f"OPTIONALLY ENCLOSED BY '\"' "
+                f"LINES TERMINATED BY '\\n' "
+                f"IGNORE 1 LINES "
+                f"({col_list}) "
+                f"SET {set_str}"
+            )
+            cur.execute(sql)
 
     def create_indexes(self) -> None:
         print("Creating MySQL indexes...")
@@ -157,13 +201,3 @@ class MySQLLoader:
             conn.commit()
         finally:
             conn.close()
-
-
-def _convert(value: str):
-    if value == "":
-        return None
-    if value == "true":
-        return 1
-    if value == "false":
-        return 0
-    return value

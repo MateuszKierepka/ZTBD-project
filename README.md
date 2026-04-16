@@ -46,11 +46,11 @@ app/
 
 ## Infrastruktura Docker
 
-4 kontenery z limitami pamieci (fair benchmark):
-- **postgres:17** — 2 GB RAM, port 5432
-- **mysql:8.0** — 2 GB RAM, port 3306
-- **mongo:8.0** — 2 GB RAM, port 27017
-- **neo4j:2026.02.2** — 4 GB RAM (heap 1G + transaction memory 1G), port 7687 + 7474, z pluginem APOC
+4 kontenery z limitami pamieci i tunigiem silnikow (fair benchmark):
+- **postgres:17** — 2 GB RAM, port 5432, tuning: shared_buffers=512MB, work_mem=64MB, maintenance_work_mem=512MB, max_wal_size=2GB, synchronous_commit=off
+- **mysql:8.0** — 2 GB RAM, port 3306, tuning: innodb_buffer_pool_size=1GB, innodb_log_file_size=256M, innodb_flush_log_at_trx_commit=2, local_infile=1, innodb_doublewrite=0
+- **mongo:8.0** — 2 GB RAM, port 27017, tuning: wiredTigerCacheSizeGB=1.2
+- **neo4j:2026.02.2** — 4 GB RAM (heap 1G + page cache 1G + transaction memory 1G), port 7687 + 7474, z pluginem APOC
 
 ---
 
@@ -115,10 +115,10 @@ Ladowanie CSV-ow do wszystkich czterech baz, celowo bez tworzenia indeksow wydaj
 
 | Baza | Metoda | Dlaczego |
 |------|--------|----------|
-| **PostgreSQL** | `COPY FROM STDIN` (psycopg) | Natywny bulk-load, 10-100x szybszy niz INSERT |
-| **MySQL** | Batch `INSERT ... VALUES (…),(…)` po 5 000 | `LOAD DATA INFILE` wymaga uprawnien FILE na serwerze, batch INSERT to najszybsza dostepna alternatywa |
-| **MongoDB** | `insert_many(ordered=False)` w batchach po 5 000 | `ordered=False` pozwala na kontynuowanie po bledzie duplikatu |
-| **Neo4j** | `UNWIND $rows AS r CREATE/MATCH` w batchach po 5 000 | Batch Cypher z parametrem listy — unika overhead pojedynczych transakcji |
+| **PostgreSQL** | `COPY FROM STDIN` (psycopg), chunk 8 MB | Natywny bulk-load, 10-100x szybszy niz INSERT. Sesyjne ustawienia: maintenance_work_mem=512MB, work_mem=64MB |
+| **MySQL** | `LOAD DATA LOCAL INFILE` | Natywny bulk-load MySQL — odczytuje plik CSV bezposrednio po stronie klienta i laduje go strumieniowo. Dla kolumn BOOLEAN (is_kids, auto_renew, is_active, completed) konwersja true/false → 1/0 przez klauzule SET. Polaczenie jako root z opcja local_infile=True |
+| **MongoDB** | `insert_many(ordered=False)` w batchach po 25 000 | `ordered=False` pozwala na kontynuowanie po bledzie duplikatu |
+| **Neo4j** | `UNWIND $rows AS r CREATE/MATCH` w batchach po 25 000 | Batch Cypher z parametrem listy — unika overhead pojedynczych transakcji |
 
 **MongoDB** laduje dane w modelu dokumentowym — schemat jest inny niz w bazach relacyjnych. Uzytkownicy maja zagniezdzone profile i aktywna subskrypcje jako subdokumenty wewnatrz jednego dokumentu. Tresci (content) maja zagniezdzone tablice cast (aktorzy/rezyserzy) i seasons z episodes.
 
