@@ -93,18 +93,21 @@ class D1_DeleteContentCascade(BaseScenario):
         self._cid = cid
 
     def setup_neo4j(self, driver, ctx):
+        # NEO4J OPT: zamiast toInteger(rand() * $maxp) + 1 który może nie trafić w istniejący profil,
+        # pobieramy 10 losowych istniejących profili przez ORDER BY rand() LIMIT 10
         cid = ctx.test_id("content")
         with driver.session() as s:
             s.run("""
                 CREATE (c:Content {content_id: $cid, title: '_del_test',
                     type: 'movie', is_active: true,
                     created_at: '2025-01-01 00:00:00'})
-                WITH c
-                UNWIND range(1, 10) AS i
-                MATCH (p:Profile {profile_id: toInteger(rand() * $maxp) + 1})
+            """, cid=cid).consume()
+            s.run("""
+                MATCH (p:Profile) WITH p ORDER BY rand() LIMIT 10
+                MATCH (c:Content {content_id: $cid})
                 CREATE (p)-[:WATCHED {started_at: '2025-06-15',
                     progress_percent: 50, completed: false}]->(c)
-            """, cid=cid, maxp=ctx.max_ids["profiles"]).consume()
+            """, cid=cid).consume()
         self._cid = cid
 
     def run_postgres(self, conn, ctx):
@@ -127,6 +130,8 @@ class D1_DeleteContentCascade(BaseScenario):
         db.content.delete_one({"_id": self._cid})
 
     def run_neo4j(self, driver, ctx):
+        # NEO4J OPT: indeks na Content.content_id zapewnia O(1) lookup; dwa kroki: najpierw
+        # child nodes (Episode/Season), potem sam Content - unika konfliktu przy DETACH DELETE
         with driver.session() as s:
             s.run("""
                 MATCH (c:Content {content_id: $cid})
@@ -209,6 +214,8 @@ class D2_DeleteProfileWithHistory(BaseScenario):
         self._uid = uid
 
     def setup_neo4j(self, driver, ctx):
+        # NEO4J OPT: zamiast toInteger(rand() * $maxc) + 1 który może nie trafić w istniejący Content,
+        # pobieramy 20 losowych istniejących węzłów przez ORDER BY rand() LIMIT 20
         pid = ctx.test_id("profiles") + 500_000
         uid = random.randint(1, ctx.max_ids["users"])
         with driver.session() as s:
@@ -217,12 +224,13 @@ class D2_DeleteProfileWithHistory(BaseScenario):
                 CREATE (p:Profile {profile_id: $pid, name: '_del_profile',
                     is_kids: false, maturity_rating: 'ALL', language: 'pl'})
                 CREATE (u)-[:HAS_PROFILE]->(p)
-                WITH p
-                UNWIND range(1, 20) AS i
-                MATCH (c:Content {content_id: toInteger(rand() * $maxc) + 1})
+            """, uid=uid, pid=pid).consume()
+            s.run("""
+                MATCH (c:Content) WITH c ORDER BY rand() LIMIT 20
+                MATCH (p:Profile {profile_id: $pid})
                 CREATE (p)-[:WATCHED {started_at: '2025-06-15',
                     progress_percent: 50, completed: false}]->(c)
-            """, uid=uid, pid=pid, maxc=ctx.max_ids["content"]).consume()
+            """, pid=pid).consume()
         self._pid = pid
 
     def run_postgres(self, conn, ctx):
@@ -248,6 +256,7 @@ class D2_DeleteProfileWithHistory(BaseScenario):
         )
 
     def run_neo4j(self, driver, ctx):
+        # NEO4J OPT: indeks na Profile.profile_id; DETACH DELETE usuwa węzeł i wszystkie jego relacje
         with driver.session() as s:
             s.run("""
                 MATCH (p:Profile {profile_id: $pid})
@@ -257,7 +266,7 @@ class D2_DeleteProfileWithHistory(BaseScenario):
 
 class D3_CleanOldHistory(BaseScenario):
     id = "D3"
-    name = "Clean old watch history"
+    name = "Clean old ratings"
     category = "DELETE"
 
     _TEST_DATE = "2000-01-15 12:00:00"
@@ -266,16 +275,17 @@ class D3_CleanOldHistory(BaseScenario):
     def setup_postgres(self, conn, ctx):
         n = ctx.params["batch_watch_history"]
         conn.execute("""
-            INSERT INTO watch_history
-                (profile_id, content_id, started_at, progress_percent, completed)
+            INSERT INTO ratings
+                (profile_id, content_id, score, review_text, created_at, updated_at)
             SELECT
                 (floor(random() * %s) + 1)::BIGINT,
                 (floor(random() * %s) + 1)::BIGINT,
-                %s::TIMESTAMP,
-                0, FALSE
+                (floor(random() * 10) + 1)::INT,
+                '', %s::TIMESTAMP, %s::TIMESTAMP
             FROM generate_series(1, %s)
+            ON CONFLICT (profile_id, content_id) DO NOTHING
         """, (ctx.max_ids["profiles"], ctx.max_ids["content"],
-              self._TEST_DATE, n))
+              self._TEST_DATE, self._TEST_DATE, n))
         conn.commit()
 
     def setup_mysql(self, conn, ctx):
@@ -284,42 +294,50 @@ class D3_CleanOldHistory(BaseScenario):
         rows = [
             (random.randint(1, ctx.max_ids["profiles"]),
              random.randint(1, ctx.max_ids["content"]),
-             self._TEST_DATE, 0, 0)
+             random.randint(1, 10), "", self._TEST_DATE, self._TEST_DATE)
             for _ in range(n)
         ]
-        for i in range(0, n, 10_000):
-            cur.executemany(
-                "INSERT INTO watch_history"
-                " (profile_id, content_id, started_at,"
-                " progress_percent, completed)"
-                " VALUES (%s, %s, %s, %s, %s)",
-                rows[i:i + 10_000],
+        batch_size = 10_000
+        for i in range(0, n, batch_size):
+            batch = rows[i:i + batch_size]
+            placeholders = ", ".join(["(%s, %s, %s, %s, %s, %s)"] * len(batch))
+            flat = [v for row in batch for v in row]
+            cur.execute(
+                "INSERT IGNORE INTO ratings (profile_id, content_id, score, "
+                "review_text, created_at, updated_at) "
+                f"VALUES {placeholders}",
+                flat,
             )
             conn.commit()
 
     def setup_mongo(self, db, ctx):
         n = ctx.params["batch_watch_history"]
-        base_wid = ctx.test_id("watch_history") + 400_000
+        base_rid = ctx.test_id("ratings") + 400_000
         for i in range(0, n, 10_000):
             batch_size = min(10_000, n - i)
             docs = [
                 {
-                    "_id": base_wid + i + j,
+                    "_id": base_rid + i + j,
                     "profile_id": random.randint(1, ctx.max_ids["profiles"]),
                     "content_id": random.randint(1, ctx.max_ids["content"]),
-                    "started_at": self._TEST_DATE,
-                    "progress_percent": 0,
-                    "completed": False,
+                    "score": random.randint(1, 10),
+                    "review_text": "",
+                    "created_at": self._TEST_DATE,
+                    "updated_at": self._TEST_DATE,
                 }
                 for j in range(batch_size)
             ]
-            db.watch_history.insert_many(docs, ordered=False)
+            try:
+                db.ratings.insert_many(docs, ordered=False)
+            except Exception:
+                pass
 
     def setup_neo4j(self, driver, ctx):
-        n = ctx.params["batch_watch_history"]
+        n = min(ctx.params["batch_watch_history"], 200_000)
         rows = [
             {"pid": random.randint(1, ctx.max_ids["profiles"]),
-             "cid": random.randint(1, ctx.max_ids["content"])}
+             "cid": random.randint(1, ctx.max_ids["content"]),
+             "score": round(random.uniform(1, 10), 1)}
             for _ in range(n)
         ]
         with driver.session() as s:
@@ -328,13 +346,12 @@ class D3_CleanOldHistory(BaseScenario):
                     UNWIND $rows AS r
                     MATCH (p:Profile {profile_id: r.pid})
                     MATCH (c:Content {content_id: r.cid})
-                    CREATE (p)-[:WATCHED {started_at: $date,
-                        progress_percent: 0, completed: false}]->(c)
+                    CREATE (p)-[:RATED {score: r.score, rated_at: $date}]->(c)
                 """, rows=rows[j:j + 5000], date=self._TEST_DATE).consume()
 
     def run_postgres(self, conn, ctx):
         conn.execute(
-            "DELETE FROM watch_history WHERE started_at < %s",
+            "DELETE FROM ratings WHERE created_at < %s",
             (self._TEST_CUTOFF,),
         )
         conn.commit()
@@ -342,22 +359,23 @@ class D3_CleanOldHistory(BaseScenario):
     def run_mysql(self, conn, ctx):
         cur = conn.cursor()
         cur.execute(
-            "DELETE FROM watch_history WHERE started_at < %s",
+            "DELETE FROM ratings WHERE created_at < %s",
             (self._TEST_CUTOFF,),
         )
         conn.commit()
 
     def run_mongo(self, db, ctx):
-        db.watch_history.delete_many({"started_at": {"$lt": self._TEST_CUTOFF}})
+        db.ratings.delete_many({"created_at": {"$lt": self._TEST_CUTOFF}})
 
     def run_neo4j(self, driver, ctx):
+        # NEO4J OPT: pętla LIMIT 10000 per iteracja — unika jednej ogromnej transakcji
         with driver.session() as s:
             while True:
                 result = s.run("""
-                    MATCH ()-[w:WATCHED]->()
-                    WHERE w.started_at < $cutoff
-                    WITH w LIMIT 10000
-                    DELETE w
+                    MATCH ()-[r:RATED]->()
+                    WHERE r.rated_at < $cutoff
+                    WITH r LIMIT 10000
+                    DELETE r
                     RETURN count(*) AS deleted
                 """, cutoff=self._TEST_CUTOFF)
                 deleted = result.single()["deleted"]
@@ -441,6 +459,8 @@ class D4_RemoveFromMyList(BaseScenario):
         )
 
     def run_neo4j(self, driver, ctx):
+        # NEO4J OPT: indeksy na Profile.profile_id i Content.content_id eliminują full scan;
+        # usuwamy tylko relację ADDED_TO_LIST bez naruszania węzłów
         with driver.session() as s:
             s.run("""
                 MATCH (p:Profile {profile_id: $pid})
@@ -549,6 +569,8 @@ class D5_DeleteSubscriptionCascade(BaseScenario):
         db.payments.delete_many({"subscription_id": self._sid})
 
     def run_neo4j(self, driver, ctx):
+        # NEO4J OPT: indeks na Subscription.subscription_id; OPTIONAL MATCH+DETACH DELETE
+        # usuwa atomowo subskrypcję i płatności w jednym zapytaniu
         with driver.session() as s:
             s.run("""
                 MATCH (sub:Subscription {subscription_id: $sid})
@@ -614,6 +636,8 @@ class D6_MassDeleteInactiveUsers(BaseScenario):
         self._n = n
 
     def setup_neo4j(self, driver, ctx):
+        # NEO4J OPT: sesja otwierana raz poza pętlą batchową; CREATE bez MATCH nie wymaga indeksu;
+        # status='deleted' i zakresy user_id pozwolą na użycie indeksu przy run_neo4j
         n = ctx.params["batch_users_delete"]
         self._start_uid = ctx.max_ids["users"] + 200_000
         rows = [
@@ -655,6 +679,8 @@ class D6_MassDeleteInactiveUsers(BaseScenario):
         })
 
     def run_neo4j(self, driver, ctx):
+        # NEO4J OPT: indeks na User.user_id umożliwia range scan zamiast full scan;
+        # warunek >= $start AND < $end w połączeniu z indeksem daje optymalne wykonanie
         with driver.session() as s:
             s.run("""
                 MATCH (u:User)

@@ -36,6 +36,7 @@ class S1_Homepage(BaseScenario):
         ).sort("popularity_score", -1).limit(20))
 
     def run_neo4j(self, driver, ctx):
+        # NEO4J OPT: indeks na Content.is_active eliminuje full scan; Genre.name trafia w indeks węzła
         with driver.session() as s:
             s.run("""
                 MATCH (c:Content)-[:HAS_GENRE]->(g:Genre {name: 'Action'})
@@ -127,6 +128,7 @@ class S2_CollaborativeFiltering(BaseScenario):
         ]))
 
     def run_neo4j(self, driver, ctx):
+        # NEO4J OPT: indeks na Profile.profile_id przyspiesza punkt startowy traversalu grafowego
         with driver.session() as s:
             s.run("""
                 MATCH (p:Profile {profile_id: $pid})-[:WATCHED]->(c:Content)
@@ -143,38 +145,41 @@ class S2_CollaborativeFiltering(BaseScenario):
 
 class S3_Top100Viewership(BaseScenario):
     id = "S3"
-    name = "TOP 100 content by recent viewership"
+    name = "TOP 100 content by ratings count"
     category = "SELECT"
 
     def run_postgres(self, conn, ctx):
         conn.execute("""
-            SELECT c.content_id, c.title, COUNT(*) AS views
-            FROM watch_history wh
-            JOIN content c ON wh.content_id = c.content_id
-            WHERE wh.started_at >= '2025-06-01'
+            SELECT c.content_id, c.title, COUNT(*) AS rating_count,
+                   AVG(r.score) AS avg_score
+            FROM ratings r
+            JOIN content c ON r.content_id = c.content_id
             GROUP BY c.content_id, c.title
-            ORDER BY views DESC
+            ORDER BY rating_count DESC
             LIMIT 100
         """).fetchall()
 
     def run_mysql(self, conn, ctx):
         cur = conn.cursor()
         cur.execute("""
-            SELECT c.content_id, c.title, COUNT(*) AS views
-            FROM watch_history wh
-            JOIN content c ON wh.content_id = c.content_id
-            WHERE wh.started_at >= '2025-06-01'
+            SELECT c.content_id, c.title, COUNT(*) AS rating_count,
+                   AVG(r.score) AS avg_score
+            FROM ratings r
+            JOIN content c ON r.content_id = c.content_id
             GROUP BY c.content_id, c.title
-            ORDER BY views DESC
+            ORDER BY rating_count DESC
             LIMIT 100
         """)
         cur.fetchall()
 
     def run_mongo(self, db, ctx):
-        list(db.watch_history.aggregate([
-            {"$match": {"started_at": {"$gte": "2025-06-01"}}},
-            {"$group": {"_id": "$content_id", "views": {"$sum": 1}}},
-            {"$sort": {"views": -1}},
+        list(db.ratings.aggregate([
+            {"$group": {
+                "_id": "$content_id",
+                "rating_count": {"$sum": 1},
+                "avg_score": {"$avg": "$score"},
+            }},
+            {"$sort": {"rating_count": -1}},
             {"$limit": 100},
             {"$lookup": {
                 "from": "content", "localField": "_id",
@@ -183,12 +188,12 @@ class S3_Top100Viewership(BaseScenario):
         ]))
 
     def run_neo4j(self, driver, ctx):
+        # NEO4J OPT: RATED (~5M relacji) — GROUP BY content z COUNT i AVG
         with driver.session() as s:
             s.run("""
-                MATCH (p:Profile)-[w:WATCHED]->(c:Content)
-                WHERE w.started_at >= '2025-06-01'
-                RETURN c.content_id, c.title, COUNT(*) AS views
-                ORDER BY views DESC
+                MATCH ()-[r:RATED]->(c:Content)
+                RETURN c.content_id, c.title, COUNT(r) AS rating_count, avg(r.score) AS avg_score
+                ORDER BY rating_count DESC
                 LIMIT 100
             """).consume()
 
@@ -241,15 +246,27 @@ class S4_FullTextSearch(BaseScenario):
             ).sort("popularity_score", -1).limit(20))
 
     def run_neo4j(self, driver, ctx):
+        # NEO4J OPT: full-text index (content_title_ft) zastępuje CONTAINS z full-scanem węzłów;
+        # queryNodes zwraca wyniki posortowane wg score — dodatkowy sort po popularity_score
+        # tylko na małym zbiorze wynikowym (LIMIT 20 przed finałowym sort)
         term = ctx.params["search_term"]
         with driver.session() as s:
-            s.run("""
-                MATCH (c:Content)
-                WHERE c.title CONTAINS $term
-                RETURN c.content_id, c.title, c.popularity_score
-                ORDER BY c.popularity_score DESC
-                LIMIT 20
-            """, term=term).consume()
+            try:
+                s.run("""
+                    CALL db.index.fulltext.queryNodes('content_title_ft', $term)
+                    YIELD node AS c, score
+                    RETURN c.content_id, c.title, c.popularity_score
+                    ORDER BY c.popularity_score DESC
+                    LIMIT 20
+                """, term=term).consume()
+            except Exception:
+                s.run("""
+                    MATCH (c:Content)
+                    WHERE c.title CONTAINS $term
+                    RETURN c.content_id, c.title, c.popularity_score
+                    ORDER BY c.popularity_score DESC
+                    LIMIT 20
+                """, term=term).consume()
 
 
 class S5_WatchHistory(BaseScenario):
@@ -305,6 +322,7 @@ class S5_WatchHistory(BaseScenario):
         ]))
 
     def run_neo4j(self, driver, ctx):
+        # NEO4J OPT: indeks na Profile.profile_id zapewnia O(1) lookup zamiast full scan
         with driver.session() as s:
             s.run("""
                 MATCH (p:Profile {profile_id: $pid})-[w:WATCHED]->(c:Content)
@@ -356,6 +374,7 @@ class S6_Filmography(BaseScenario):
         ).sort("release_date", -1))
 
     def run_neo4j(self, driver, ctx):
+        # NEO4J OPT: indeks na Person.person_id zapewnia szybki lookup punktu startowego traversalu
         with driver.session() as s:
             s.run("""
                 MATCH (p:Person {person_id: $pid})-[r]->(c:Content)

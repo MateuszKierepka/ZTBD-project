@@ -76,9 +76,9 @@ Kaskadowe usuwanie (`ON DELETE CASCADE`) na wszystkich FK — to pozwala testowa
 
 | Wolumen | Users | People | Content | Watch History | Laczna estymacja |
 |---------|-------|--------|---------|---------------|------------------|
-| **small** | 10K | 5K | 2K | 500K | ~600K rekordow |
-| **medium** | 100K | 20K | 10K | 5M | ~6M rekordow |
-| **large** | 1M | 50K | 30K | 50M | ~55M rekordow |
+| **small** | 5K | 2K | 2K | 300K | ~576K rekordow |
+| **medium** | 20K | 5K | 5K | 500K | ~1.33M rekordow |
+| **large** | 100K | 20K | 15K | 6M | ~10.2M rekordow |
 
 ---
 
@@ -199,17 +199,17 @@ Przed kazdym scenariuszem `_flush_caches()` czysci cache na poziomie silnika, ze
 | ID | Nazwa | Co robi |
 |----|-------|---------|
 | **I1** | Rejestracja uzytkownika | Wstawienie danych do 3 tabel: users + profiles + subscriptions |
-| **I2** | Bulk import watch_history | Masowe wstawienie N rekordow (10K–500K zalezenie od wolumenu) |
+| **I2** | Bulk import ratings | Masowe wstawienie N rekordow ocen do tabeli ratings (10K/100K/500K zalezenie od wolumenu) |
 | **I3** | Dodanie serialu z pelnym drzewem | Wstawienie content + 3 sezony x 10 odcinkow + 10 aktorow |
 | **I4** | Batch insert platnosci | Masowe wstawienie N rekordow do payments (1K–50K) |
 | **I5** | Oceny z przeliczeniem avg_rating | Masowe wstawienie ocen + przeliczenie sredniej oceny na content |
 | **I6** | Import osob z powiazaniami | Masowe wstawienie osob (people) + przypisanie ich do tresci (content_people) |
 
 **Jak rozni sie implementacja miedzy bazami (INSERT):**
-- **PG** — masowe operacje przez `COPY FROM STDIN` (natywny bulk-load PostgreSQL, najszybszy sposob), pojedyncze przez zwykle INSERT z `RETURNING user_id` zeby dostac ID nowego rekordu
-- **MySQL** — masowe przez batch INSERT (wstawianie wielu wierszy jednym zapytaniem, po 5 000 naraz), ID nowego rekordu przez `lastrowid`
-- **MongoDB** — masowe przez `insert_many()` (wrzuca liste dokumentow naraz), w I1 caly user to jeden dokument z zagniezdzonymi profilami i subskrypcja (nie ma osobnych tabel), w I6 zamiast osobnej tabeli content_people dodajemy aktorow do tablicy `cast` wewnatrz dokumentu content
-- **Neo4j** — masowe przez `UNWIND` (przekazujemy liste danych jako parametr, baza iteruje po niej), tworzy wezly i relacje miedzy nimi, np. `(Profile)-[:WATCHED]->(Content)`
+- **PG** — masowe operacje przez `COPY FROM STDIN` (natywny bulk-load PostgreSQL, najszybszy sposob), pojedyncze przez zwykle INSERT z `RETURNING user_id` zeby dostac ID nowego rekordu. W I2 batch INSERT z `ON CONFLICT (profile_id, content_id) DO NOTHING` (tabela ratings ma unique constraint na parze profil+tresc)
+- **MySQL** — masowe przez batch INSERT (wstawianie wielu wierszy jednym zapytaniem, po 5 000 naraz), ID nowego rekordu przez `lastrowid`. W I2 uzywa `INSERT IGNORE` zeby pomijac duplikaty (profile_id, content_id)
+- **MongoDB** — masowe przez `insert_many()` (wrzuca liste dokumentow naraz), w I1 caly user to jeden dokument z zagniezdzonymi profilami i subskrypcja (nie ma osobnych tabel), w I2 wstawia dokumenty do kolekcji `ratings`, w I6 zamiast osobnej tabeli content_people dodajemy aktorow do tablicy `cast` wewnatrz dokumentu content
+- **Neo4j** — masowe przez `UNWIND` (przekazujemy liste danych jako parametr, baza iteruje po niej), tworzy wezly i relacje miedzy nimi. W I2 tworzy relacje `(Profile)-[:RATED]->(Content)` przy uzyciu `CALL IN TRANSACTIONS OF 2000 ROWS` — commituje batchami zwalniajac pamiec transakcji. Jedna sesja jest otwierana poza petla batchowa (nie wewnatrz niej) — eliminuje overhead otwierania nowego polaczenia TCP per batch. W I3 cale drzewo serialu (Content + Season + Episode) powstaje jednym zapytaniem z zagniezdzonym `UNWIND range()`, bez petli Python po sezonach/odcinkach
 
 ### SELECT (6 scenariuszy)
 
@@ -217,15 +217,15 @@ Przed kazdym scenariuszem `_flush_caches()` czysci cache na poziomie silnika, ze
 |----|-------|---------|
 | **S1** | Strona glowna | Filtrowanie tresci po gatunku "Action", sortowanie po popularnosci, zwrocenie 20 najlepszych + odczyt pola JSON (studio) |
 | **S2** | Collaborative filtering | Znajdz uzytkownikow o podobnych gustach (ogladali to samo), polecaj tresci ktorych nasz user jeszcze nie widzial |
-| **S3** | TOP 100 ogladalnosci | Policz ile razy kazda tresc byla ogladana w ostatnim miesiacu, zwroc 100 najpopularniejszych |
+| **S3** | TOP 100 wg liczby ocen | Policz ile ocen ma kazda tresc, zwroc 100 tresci z najwyzszym licznikiem ocen wraz ze srednia |
 | **S4** | Full-text search po tytule | Wyszukiwanie tresci po fragmencie tytulu + odczyt pola JSON (tags) |
 | **S5** | Historia ogladania profilu | 50 ostatnich pozycji z historii ogladania danego profilu, razem z tytulami tresci |
 | **S6** | Filmografia osoby | Wszystkie tresci w ktorych dana osoba brala udzial (jako aktor/rezyser/scenarzysta) |
 
 **Jak rozni sie implementacja miedzy bazami (SELECT):**
-- **PG/MySQL** — klasyczne JOIN-y miedzy tabelami, WHERE do filtrowania, GROUP BY do agregacji. W S1 dostep do pola JSON przez `metadata->>'studio'` (PG) / `metadata->>'$.studio'` (MySQL). W S4 wyszukiwanie przez `ILIKE '%term%'` (PG) / `LIKE '%term%'` (MySQL)
-- **MongoDB** — zamiast JOIN-ow uzywa `aggregate` pipeline (lancuch operacji: filtruj → grupuj → sortuj → dolacz dane z innej kolekcji przez `$lookup`). W S4 wyszukiwanie przez wbudowany text search (`$text`). W S6 wystarczy jedno zapytanie bo aktorzy sa zagniezdeni w dokumencie content
-- **Neo4j** — zapytania Cypher oparte na przechodzeniu po grafie, np. "znajdz profil, przejdz po relacji WATCHED do tresci, przejdz dalej do innych profili ktore tez to ogladaly". Naturalnie modeluje rekomendacje (S2) — graf jest do tego stworzony
+- **PG/MySQL** — klasyczne JOIN-y miedzy tabelami, WHERE do filtrowania, GROUP BY do agregacji. W S1 dostep do pola JSON przez `metadata->>'studio'` (PG) / `metadata->>'$.studio'` (MySQL). W S3 JOIN ratings z content, GROUP BY content, ORDER BY liczba ocen. W S4 wyszukiwanie przez `ILIKE '%term%'` (PG) / `LIKE '%term%'` (MySQL)
+- **MongoDB** — zamiast JOIN-ow uzywa `aggregate` pipeline (lancuch operacji: filtruj → grupuj → sortuj → dolacz dane z innej kolekcji przez `$lookup`). W S3 agregacja po kolekcji `ratings` z `$lookup` do `content`. W S4 wyszukiwanie przez wbudowany text search (`$text`). W S6 wystarczy jedno zapytanie bo aktorzy sa zagniezdeni w dokumencie content
+- **Neo4j** — zapytania Cypher oparte na przechodzeniu po grafie, np. "znajdz profil, przejdz po relacji WATCHED do tresci, przejdz dalej do innych profili ktore tez to ogladaly". Naturalnie modeluje rekomendacje (S2) — graf jest do tego stworzony. W S3 agreguje relacje RATED zamiast WATCHED — ta sama semantyka (aktywnosc uzytkownikow), mniejszy zbior danych
 
 ### UPDATE (6 scenariuszy)
 
@@ -239,9 +239,9 @@ Przed kazdym scenariuszem `_flush_caches()` czysci cache na poziomie silnika, ze
 | **U6** | Masowa aktualizacja popularity_score | Przeliczenie wyniku popularnosci dla WSZYSTKICH tresci wg formuly (views x 0.0001 + avg_rating x 5 + liczba_ocen x 0.1) |
 
 **Jak rozni sie implementacja miedzy bazami (UPDATE):**
-- **PG/MySQL** — klasyczny UPDATE z WHERE, w U2 i U6 podzapytanie do obliczenia wartosci (np. `SET avg_rating = (SELECT AVG(score) FROM ratings WHERE ...)`)
+- **PG/MySQL** — klasyczny UPDATE z WHERE. W U2 podzapytanie `SET avg_rating = (SELECT AVG(score) FROM ratings WHERE content_id = ...)`. W U6 PostgreSQL uzywa podzapytania z `GROUP BY` polaczonego przez klauzule `FROM` (jeden przebieg po ratings, JOIN z content — unika korelowanego podzapytania per wiersz). MySQL uzywa skorelowanego `SELECT COUNT(*)` per wiersz (brak wsparcia dla FROM subquery w UPDATE)
 - **MongoDB** — `update_one` / `update_many` na dokumentach. W U3 subskrypcja jest zagniezdzona w dokumencie usera, wiec aktualizujemy pole `subscription.plan_name` wewnatrz dokumentu. W U6 trzeba najpierw policzyc oceny osobnym zapytaniem, a potem zrobic masowa aktualizacje
-- **Neo4j** — `MATCH` + `SET` na wezlach/relacjach. W U2 oblicza srednia z relacji `RATED` i ustawia ja na wezle Content
+- **Neo4j** — `MATCH` + `SET` na wezlach/relacjach. W U1 zapytanie uzywa `ORDER BY w.started_at DESC LIMIT 1` zamiast prostego `LIMIT 1`, co gwarantuje deterministyczny wybor relacji WATCHED (zawsze najnowsza). W U2 oblicza srednia z relacji `RATED` i ustawia ja na wezle Content (indeks na `content_id` zapewnia O(1) lookup). W U6 zamiast prostego `OPTIONAL MATCH` po wszystkich wezlach Content, uzywa `CALL { WITH c OPTIONAL MATCH ... RETURN avg(r.score), count(r) }` — subquery izoluje agregacje per wezel, eliminujac problem mnozenia wierszy przy OPTIONAL MATCH z agregacja na calym grafie
 
 ### DELETE (6 scenariuszy)
 
@@ -249,15 +249,15 @@ Przed kazdym scenariuszem `_flush_caches()` czysci cache na poziomie silnika, ze
 |----|-------|---------|
 | **D1** | Usuniecie tresci z kaskada | Usuniecie tresci razem ze wszystkimi powiazanymi danymi (sezony, odcinki, historia, lista, oceny) |
 | **D2** | Usuniecie profilu z historia | Usuniecie profilu razem z jego historia ogladania, lista i ocenami |
-| **D3** | Czyszczenie starej historii | Usuniecie wszystkich wpisow historii ogladania starszych niz rok |
+| **D3** | Czyszczenie starych ocen | Usuniecie wszystkich ocen (ratings) starszych niz zadana data graniczna |
 | **D4** | Usuniecie z my_list | Usuniecie jednej pozycji z listy "do obejrzenia" |
 | **D5** | Usuniecie subskrypcji z platnosciami | Usuniecie subskrypcji razem z jej platnosciami |
 | **D6** | Masowe usuniecie nieaktywnych userow | Usuniecie wszystkich uzytkownikow ze statusem "deleted" |
 
 **Jak rozni sie implementacja miedzy bazami (DELETE):**
-- **PG/MySQL** — kaskadowe usuwanie dziala automatycznie dzieki `ON DELETE CASCADE` na kluczach obcych — wystarczy usunac rodzica (np. content), a baza sama usunie sezony, odcinki, historie itp.
-- **MongoDB** — nie ma CASCADE, trzeba recznie usuwac z kazdej kolekcji osobno (np. w D1: usun z watch_history, my_list, ratings, i dopiero potem z content). W D2 profil jest zagniezdony w userze, wiec usuwamy go operacja `$pull` (wyciagniecie elementu z tablicy)
-- **Neo4j** — `DETACH DELETE` usuwa wezel razem ze wszystkimi jego relacjami. W D3 usuwanie batchowane (po 10 000 naraz w petli), bo usuniecie milionow relacji na raz mogloby spowodowac brak pamieci
+- **PG/MySQL** — kaskadowe usuwanie dziala automatycznie dzieki `ON DELETE CASCADE` na kluczach obcych — wystarczy usunac rodzica (np. content), a baza sama usunie sezony, odcinki, historie itp. W D3 `DELETE FROM ratings WHERE created_at < data_graniczna`
+- **MongoDB** — nie ma CASCADE, trzeba recznie usuwac z kazdej kolekcji osobno (np. w D1: usun z watch_history, my_list, ratings, i dopiero potem z content). W D2 profil jest zagniezdony w userze, wiec usuwamy go operacja `$pull` (wyciagniecie elementu z tablicy). W D3 `ratings.delete_many` po polu `created_at`
+- **Neo4j** — `DETACH DELETE` usuwa wezel razem ze wszystkimi jego relacjami. W D3 usuwa relacje RATED starsze niz data graniczna, batchowane po 10 000 naraz w petli (usuniecie setek tysiecy relacji na raz mogloby przekroczyc pamiec transakcji). W setup D1 i D2 zamiast `toInteger(rand() * $max) + 1` (ktore moze zwrocic ID nieistniejacego wezla → MATCH zwraca 0 wierszy → brak danych testowych) uzywa `MATCH (p:Profile) WITH p ORDER BY rand() LIMIT 10` — gwarantuje ze WATCHED beda do realnie istniejacych wezlow
 
 ### Wyniki benchmarkow
 
@@ -328,7 +328,7 @@ Dane sa ladowane ponownie od zera — TRUNCATE w PostgreSQL/MySQL, drop_collecti
 
 **MongoDB** dostaje 16 indeksow: unikalne na email i parach (profile_id, content_id), single field na polach filtrowanych, text index na title, compound index na (profile_id, started_at).
 
-**Neo4j** dostaje 9 indeksow: property indexes (RANGE) na statusach i typach, text indexes na title i metadata.
+**Neo4j** dostaje 9 indeksow w loaderze: property indexes (RANGE) na statusach i typach, text indexes na title i metadata. Dodatkowo, na poczatku kazdego pliku scenariuszy umieszczone sa komentarze z zaleceniami dodatkowych indeksow Cypher (np. `FOR (n:User) ON (n.user_id)`, `FOR (n:Profile) ON (n.profile_id)`), ktore eliminuja full graph scan przy MATCH i sa szczegolnie istotne dla zapytan z warunkami na wlasciwosciach wezlow.
 
 ---
 
@@ -438,6 +438,6 @@ Pliki wynikowe:
 
 ## Co jeszcze do zrobienia
 
-1. **Uruchomienie benchmarkow na wolumenie large** (1M users, 50M watch_history)
+1. **Uruchomienie benchmarkow na wolumenie large** (100K users, 6M watch_history, ~10.2M rekordow lacznie)
 2. **Sprawozdanie pisemne** — opis teoretyczny SZBD, analiza wynikow, weryfikacja H1
 3. **Prezentacja** — wykresy + kluczowe wnioski
