@@ -93,8 +93,6 @@ class D1_DeleteContentCascade(BaseScenario):
         self._cid = cid
 
     def setup_neo4j(self, driver, ctx):
-        # NEO4J OPT: zamiast toInteger(rand() * $maxp) + 1 który może nie trafić w istniejący profil,
-        # pobieramy 10 losowych istniejących profili przez ORDER BY rand() LIMIT 10
         cid = ctx.test_id("content")
         with driver.session() as s:
             s.run("""
@@ -130,8 +128,6 @@ class D1_DeleteContentCascade(BaseScenario):
         db.content.delete_one({"_id": self._cid})
 
     def run_neo4j(self, driver, ctx):
-        # NEO4J OPT: indeks na Content.content_id zapewnia O(1) lookup; dwa kroki: najpierw
-        # child nodes (Episode/Season), potem sam Content - unika konfliktu przy DETACH DELETE
         with driver.session() as s:
             s.run("""
                 MATCH (c:Content {content_id: $cid})
@@ -214,8 +210,6 @@ class D2_DeleteProfileWithHistory(BaseScenario):
         self._uid = uid
 
     def setup_neo4j(self, driver, ctx):
-        # NEO4J OPT: zamiast toInteger(rand() * $maxc) + 1 który może nie trafić w istniejący Content,
-        # pobieramy 20 losowych istniejących węzłów przez ORDER BY rand() LIMIT 20
         pid = ctx.test_id("profiles") + 500_000
         uid = random.randint(1, ctx.max_ids["users"])
         with driver.session() as s:
@@ -256,7 +250,6 @@ class D2_DeleteProfileWithHistory(BaseScenario):
         )
 
     def run_neo4j(self, driver, ctx):
-        # NEO4J OPT: indeks na Profile.profile_id; DETACH DELETE usuwa węzeł i wszystkie jego relacje
         with driver.session() as s:
             s.run("""
                 MATCH (p:Profile {profile_id: $pid})
@@ -333,7 +326,7 @@ class D3_CleanOldHistory(BaseScenario):
                 pass
 
     def setup_neo4j(self, driver, ctx):
-        n = min(ctx.params["batch_watch_history"], 200_000)
+        n = ctx.params["batch_watch_history"]
         rows = [
             {"pid": random.randint(1, ctx.max_ids["profiles"]),
              "cid": random.randint(1, ctx.max_ids["content"]),
@@ -368,7 +361,6 @@ class D3_CleanOldHistory(BaseScenario):
         db.ratings.delete_many({"created_at": {"$lt": self._TEST_CUTOFF}})
 
     def run_neo4j(self, driver, ctx):
-        # NEO4J OPT: pętla LIMIT 10000 per iteracja — unika jednej ogromnej transakcji
         with driver.session() as s:
             while True:
                 result = s.run("""
@@ -459,8 +451,6 @@ class D4_RemoveFromMyList(BaseScenario):
         )
 
     def run_neo4j(self, driver, ctx):
-        # NEO4J OPT: indeksy na Profile.profile_id i Content.content_id eliminują full scan;
-        # usuwamy tylko relację ADDED_TO_LIST bez naruszania węzłów
         with driver.session() as s:
             s.run("""
                 MATCH (p:Profile {profile_id: $pid})
@@ -569,8 +559,6 @@ class D5_DeleteSubscriptionCascade(BaseScenario):
         db.payments.delete_many({"subscription_id": self._sid})
 
     def run_neo4j(self, driver, ctx):
-        # NEO4J OPT: indeks na Subscription.subscription_id; OPTIONAL MATCH+DETACH DELETE
-        # usuwa atomowo subskrypcję i płatności w jednym zapytaniu
         with driver.session() as s:
             s.run("""
                 MATCH (sub:Subscription {subscription_id: $sid})
@@ -636,8 +624,6 @@ class D6_MassDeleteInactiveUsers(BaseScenario):
         self._n = n
 
     def setup_neo4j(self, driver, ctx):
-        # NEO4J OPT: sesja otwierana raz poza pętlą batchową; CREATE bez MATCH nie wymaga indeksu;
-        # status='deleted' i zakresy user_id pozwolą na użycie indeksu przy run_neo4j
         n = ctx.params["batch_users_delete"]
         self._start_uid = ctx.max_ids["users"] + 200_000
         rows = [
@@ -679,8 +665,6 @@ class D6_MassDeleteInactiveUsers(BaseScenario):
         })
 
     def run_neo4j(self, driver, ctx):
-        # NEO4J OPT: indeks na User.user_id umożliwia range scan zamiast full scan;
-        # warunek >= $start AND < $end w połączeniu z indeksem daje optymalne wykonanie
         with driver.session() as s:
             s.run("""
                 MATCH (u:User)

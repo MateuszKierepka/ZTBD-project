@@ -9,14 +9,14 @@
             "Parallel Aware": false,
             "Async Capable": false,
             "Startup Cost": 0.28,
-            "Total Cost": 48.79,
+            "Total Cost": 48.82,
             "Plan Rows": 20,
             "Plan Width": 101,
-            "Actual Startup Time": 0.067,
-            "Actual Total Time": 0.687,
+            "Actual Startup Time": 0.083,
+            "Actual Total Time": 0.784,
             "Actual Rows": 20,
             "Actual Loops": 1,
-            "Shared Hit Blocks": 451,
+            "Shared Hit Blocks": 450,
             "Shared Read Blocks": 0,
             "Shared Dirtied Blocks": 0,
             "Shared Written Blocks": 0,
@@ -37,16 +37,16 @@
                 "Relation Name": "content",
                 "Alias": "content",
                 "Startup Cost": 0.28,
-                "Total Cost": 3177.82,
-                "Plan Rows": 1310,
+                "Total Cost": 3152.73,
+                "Plan Rows": 1299,
                 "Plan Width": 101,
-                "Actual Startup Time": 0.066,
-                "Actual Total Time": 0.685,
+                "Actual Startup Time": 0.083,
+                "Actual Total Time": 0.781,
                 "Actual Rows": 20,
                 "Actual Loops": 1,
                 "Filter": "((genres)::text ~~ '%%Action%%'::text)",
                 "Rows Removed by Filter": 130,
-                "Shared Hit Blocks": 451,
+                "Shared Hit Blocks": 450,
                 "Shared Read Blocks": 0,
                 "Shared Dirtied Blocks": 0,
                 "Shared Written Blocks": 0,
@@ -60,7 +60,7 @@
             ]
           },
           "Planning": {
-            "Shared Hit Blocks": 176,
+            "Shared Hit Blocks": 175,
             "Shared Read Blocks": 0,
             "Shared Dirtied Blocks": 0,
             "Shared Written Blocks": 0,
@@ -71,9 +71,9 @@
             "Temp Read Blocks": 0,
             "Temp Written Blocks": 0
           },
-          "Planning Time": 0.374,
+          "Planning Time": 0.749,
           "Triggers": [],
-          "Execution Time": 0.694
+          "Execution Time": 0.798
         }
       ],
       "mysql": {
@@ -140,7 +140,7 @@
           "queryHash": "5CA11482",
           "planCacheShapeHash": "5CA11482",
           "planCacheKey": "8081DD64",
-          "optimizationTimeMillis": 1,
+          "optimizationTimeMillis": 2,
           "maxIndexedOrSolutionsReached": false,
           "maxIndexedAndSolutionsReached": false,
           "maxScansToExplodeReached": false,
@@ -390,7 +390,7 @@
         "executionStats": {
           "executionSuccess": true,
           "nReturned": 20,
-          "executionTimeMillis": 1,
+          "executionTimeMillis": 2,
           "totalKeysExamined": 159,
           "totalDocsExamined": 159,
           "executionStages": {
@@ -984,7 +984,7 @@
           "$db": "vod"
         },
         "serverInfo": {
-          "host": "44e4b6837b01",
+          "host": "a213d2e487c8",
           "port": 27017,
           "version": "8.0.20",
           "gitVersion": "28927c60881a488fcbc5fd4d925b410f33258827"
@@ -1191,9 +1191,9 @@
     },
     "summary": {
       "postgres": {
-        "planning_time_ms": 0.374,
-        "execution_time_ms": 0.694,
-        "total_cost": 48.79,
+        "planning_time_ms": 0.749,
+        "execution_time_ms": 0.798,
+        "total_cost": 48.82,
         "actual_rows": 20,
         "scan_types": [
           {
@@ -1219,7 +1219,7 @@
         "n_returned": 20,
         "total_docs_examined": 159,
         "total_keys_examined": 159,
-        "execution_time_ms": 1,
+        "execution_time_ms": 2,
         "scan_type": "IXSCAN"
       },
       "neo4j": {
@@ -1247,16 +1247,16 @@
             "Node Type": "Limit",
             "Parallel Aware": false,
             "Async Capable": false,
-            "Startup Cost": 9128.39,
-            "Total Cost": 9128.42,
+            "Startup Cost": 9129.13,
+            "Total Cost": 9129.16,
             "Plan Rows": 10,
             "Plan Width": 50,
-            "Actual Startup Time": 50.028,
-            "Actual Total Time": 50.035,
+            "Actual Startup Time": 72.051,
+            "Actual Total Time": 72.057,
             "Actual Rows": 10,
             "Actual Loops": 1,
-            "Shared Hit Blocks": 11174,
-            "Shared Read Blocks": 1,
+            "Shared Hit Blocks": 13984,
+            "Shared Read Blocks": 6,
             "Shared Dirtied Blocks": 0,
             "Shared Written Blocks": 0,
             "Local Hit Blocks": 0,
@@ -1271,12 +1271,12 @@
                 "Parent Relationship": "Outer",
                 "Parallel Aware": false,
                 "Async Capable": false,
-                "Startup Cost": 9128.39,
-                "Total Cost": 9129.77,
-                "Plan Rows": 550,
+                "Startup Cost": 9129.13,
+                "Total Cost": 9130.5,
+                "Plan Rows": 549,
                 "Plan Width": 50,
-                "Actual Startup Time": 50.027,
-                "Actual Total Time": 50.032,
+                "Actual Startup Time": 72.05,
+                "Actual Total Time": 72.055,
                 "Actual Rows": 10,
                 "Actual Loops": 1,
                 "Sort Key": [
@@ -1285,8 +1285,8 @@
                 "Sort Method": "top-N heapsort",
                 "Sort Space Used": 26,
                 "Sort Space Type": "Memory",
-                "Shared Hit Blocks": 11174,
-                "Shared Read Blocks": 1,
+                "Shared Hit Blocks": 13984,
+                "Shared Read Blocks": 6,
                 "Shared Dirtied Blocks": 0,
                 "Shared Written Blocks": 0,
                 "Local Hit Blocks": 0,
@@ -1303,19 +1303,19 @@
                     "Parent Relationship": "Outer",
                     "Parallel Aware": false,
                     "Async Capable": false,
-                    "Startup Cost": 9106.88,
-                    "Total Cost": 9116.51,
-                    "Plan Rows": 550,
+                    "Startup Cost": 9107.66,
+                    "Total Cost": 9117.27,
+                    "Plan Rows": 549,
                     "Plan Width": 50,
-                    "Actual Startup Time": 49.755,
-                    "Actual Total Time": 49.952,
-                    "Actual Rows": 844,
+                    "Actual Startup Time": 71.657,
+                    "Actual Total Time": 71.933,
+                    "Actual Rows": 856,
                     "Actual Loops": 1,
                     "Group Key": [
                       "c.content_id"
                     ],
-                    "Shared Hit Blocks": 11171,
-                    "Shared Read Blocks": 1,
+                    "Shared Hit Blocks": 13981,
+                    "Shared Read Blocks": 6,
                     "Shared Dirtied Blocks": 0,
                     "Shared Written Blocks": 0,
                     "Local Hit Blocks": 0,
@@ -1330,22 +1330,22 @@
                         "Parent Relationship": "Outer",
                         "Parallel Aware": false,
                         "Async Capable": false,
-                        "Startup Cost": 9106.88,
-                        "Total Cost": 9108.26,
-                        "Plan Rows": 550,
+                        "Startup Cost": 9107.66,
+                        "Total Cost": 9109.03,
+                        "Plan Rows": 549,
                         "Plan Width": 42,
-                        "Actual Startup Time": 49.747,
-                        "Actual Total Time": 49.802,
-                        "Actual Rows": 1102,
+                        "Actual Startup Time": 71.649,
+                        "Actual Total Time": 71.705,
+                        "Actual Rows": 1115,
                         "Actual Loops": 1,
                         "Sort Key": [
                           "c.content_id"
                         ],
                         "Sort Method": "quicksort",
-                        "Sort Space Used": 115,
+                        "Sort Space Used": 116,
                         "Sort Space Type": "Memory",
-                        "Shared Hit Blocks": 11171,
-                        "Shared Read Blocks": 1,
+                        "Shared Hit Blocks": 13981,
+                        "Shared Read Blocks": 6,
                         "Shared Dirtied Blocks": 0,
                         "Shared Written Blocks": 0,
                         "Local Hit Blocks": 0,
@@ -1361,17 +1361,17 @@
                             "Parallel Aware": false,
                             "Async Capable": false,
                             "Join Type": "Inner",
-                            "Startup Cost": 2130.33,
-                            "Total Cost": 9081.85,
-                            "Plan Rows": 550,
+                            "Startup Cost": 2131.55,
+                            "Total Cost": 9082.68,
+                            "Plan Rows": 549,
                             "Plan Width": 42,
-                            "Actual Startup Time": 9.72,
-                            "Actual Total Time": 49.469,
-                            "Actual Rows": 1102,
+                            "Actual Startup Time": 13.539,
+                            "Actual Total Time": 71.277,
+                            "Actual Rows": 1115,
                             "Actual Loops": 1,
                             "Inner Unique": true,
-                            "Shared Hit Blocks": 11171,
-                            "Shared Read Blocks": 1,
+                            "Shared Hit Blocks": 13981,
+                            "Shared Read Blocks": 6,
                             "Shared Dirtied Blocks": 0,
                             "Shared Written Blocks": 0,
                             "Local Hit Blocks": 0,
@@ -1387,18 +1387,18 @@
                                 "Parallel Aware": false,
                                 "Async Capable": false,
                                 "Join Type": "Inner",
-                                "Startup Cost": 2130.05,
-                                "Total Cost": 8905.92,
-                                "Plan Rows": 550,
+                                "Startup Cost": 2131.27,
+                                "Total Cost": 8907.14,
+                                "Plan Rows": 549,
                                 "Plan Width": 8,
-                                "Actual Startup Time": 9.698,
-                                "Actual Total Time": 47.852,
-                                "Actual Rows": 1102,
+                                "Actual Startup Time": 13.513,
+                                "Actual Total Time": 68.556,
+                                "Actual Rows": 1115,
                                 "Actual Loops": 1,
                                 "Inner Unique": true,
                                 "Hash Cond": "(wh.profile_id = wh2.profile_id)",
-                                "Shared Hit Blocks": 7118,
-                                "Shared Read Blocks": 1,
+                                "Shared Hit Blocks": 9899,
+                                "Shared Read Blocks": 6,
                                 "Shared Dirtied Blocks": 0,
                                 "Shared Written Blocks": 0,
                                 "Local Hit Blocks": 0,
@@ -1419,13 +1419,13 @@
                                     "Total Cost": 6468.89,
                                     "Plan Rows": 150000,
                                     "Plan Width": 16,
-                                    "Actual Startup Time": 0.186,
-                                    "Actual Total Time": 27.41,
-                                    "Actual Rows": 296419,
+                                    "Actual Startup Time": 0.094,
+                                    "Actual Total Time": 38.422,
+                                    "Actual Rows": 298211,
                                     "Actual Loops": 1,
                                     "Filter": "(NOT (ANY (content_id = (hashed SubPlan 1).col1)))",
-                                    "Rows Removed by Filter": 3581,
-                                    "Shared Hit Blocks": 2660,
+                                    "Rows Removed by Filter": 1789,
+                                    "Shared Hit Blocks": 2649,
                                     "Shared Read Blocks": 1,
                                     "Shared Dirtied Blocks": 0,
                                     "Shared Written Blocks": 0,
@@ -1448,15 +1448,15 @@
                                         "Total Cost": 86.83,
                                         "Plan Rows": 22,
                                         "Plan Width": 8,
-                                        "Actual Startup Time": 0.077,
-                                        "Actual Total Time": 0.162,
-                                        "Actual Rows": 23,
+                                        "Actual Startup Time": 0.041,
+                                        "Actual Total Time": 0.076,
+                                        "Actual Rows": 12,
                                         "Actual Loops": 1,
-                                        "Recheck Cond": "(profile_id = '7412'::smallint)",
+                                        "Recheck Cond": "(profile_id = '12925'::smallint)",
                                         "Rows Removed by Index Recheck": 0,
-                                        "Exact Heap Blocks": 23,
+                                        "Exact Heap Blocks": 12,
                                         "Lossy Heap Blocks": 0,
-                                        "Shared Hit Blocks": 28,
+                                        "Shared Hit Blocks": 17,
                                         "Shared Read Blocks": 1,
                                         "Shared Dirtied Blocks": 0,
                                         "Shared Written Blocks": 0,
@@ -1477,11 +1477,11 @@
                                             "Total Cost": 4.59,
                                             "Plan Rows": 22,
                                             "Plan Width": 0,
-                                            "Actual Startup Time": 0.069,
-                                            "Actual Total Time": 0.069,
-                                            "Actual Rows": 23,
+                                            "Actual Startup Time": 0.034,
+                                            "Actual Total Time": 0.034,
+                                            "Actual Rows": 12,
                                             "Actual Loops": 1,
-                                            "Index Cond": "(profile_id = '7412'::smallint)",
+                                            "Index Cond": "(profile_id = '12925'::smallint)",
                                             "Shared Hit Blocks": 5,
                                             "Shared Read Blocks": 1,
                                             "Shared Dirtied Blocks": 0,
@@ -1502,12 +1502,12 @@
                                     "Parent Relationship": "Inner",
                                     "Parallel Aware": false,
                                     "Async Capable": false,
-                                    "Startup Cost": 2042.53,
-                                    "Total Cost": 2042.53,
+                                    "Startup Cost": 2043.76,
+                                    "Total Cost": 2043.76,
                                     "Plan Rows": 50,
                                     "Plan Width": 8,
-                                    "Actual Startup Time": 9.426,
-                                    "Actual Total Time": 9.429,
+                                    "Actual Startup Time": 13.387,
+                                    "Actual Total Time": 13.39,
                                     "Actual Rows": 50,
                                     "Actual Loops": 1,
                                     "Hash Buckets": 1024,
@@ -1515,8 +1515,8 @@
                                     "Hash Batches": 1,
                                     "Original Hash Batches": 1,
                                     "Peak Memory Usage": 10,
-                                    "Shared Hit Blocks": 4458,
-                                    "Shared Read Blocks": 0,
+                                    "Shared Hit Blocks": 7250,
+                                    "Shared Read Blocks": 5,
                                     "Shared Dirtied Blocks": 0,
                                     "Shared Written Blocks": 0,
                                     "Local Hit Blocks": 0,
@@ -1532,15 +1532,15 @@
                                         "Parallel Aware": false,
                                         "Async Capable": false,
                                         "Startup Cost": 5.02,
-                                        "Total Cost": 2042.53,
+                                        "Total Cost": 2043.76,
                                         "Plan Rows": 50,
                                         "Plan Width": 8,
-                                        "Actual Startup Time": 0.538,
-                                        "Actual Total Time": 9.415,
+                                        "Actual Startup Time": 0.441,
+                                        "Actual Total Time": 13.37,
                                         "Actual Rows": 50,
                                         "Actual Loops": 1,
-                                        "Shared Hit Blocks": 4458,
-                                        "Shared Read Blocks": 0,
+                                        "Shared Hit Blocks": 7250,
+                                        "Shared Read Blocks": 5,
                                         "Shared Dirtied Blocks": 0,
                                         "Shared Written Blocks": 0,
                                         "Local Hit Blocks": 0,
@@ -1556,15 +1556,15 @@
                                             "Parallel Aware": false,
                                             "Async Capable": false,
                                             "Startup Cost": 5.02,
-                                            "Total Cost": 135255.52,
-                                            "Plan Rows": 3319,
+                                            "Total Cost": 135255.18,
+                                            "Plan Rows": 3317,
                                             "Plan Width": 8,
-                                            "Actual Startup Time": 0.537,
-                                            "Actual Total Time": 9.41,
+                                            "Actual Startup Time": 0.44,
+                                            "Actual Total Time": 13.363,
                                             "Actual Rows": 50,
                                             "Actual Loops": 1,
-                                            "Shared Hit Blocks": 4458,
-                                            "Shared Read Blocks": 0,
+                                            "Shared Hit Blocks": 7250,
+                                            "Shared Read Blocks": 5,
                                             "Shared Dirtied Blocks": 0,
                                             "Shared Written Blocks": 0,
                                             "Local Hit Blocks": 0,
@@ -1581,18 +1581,18 @@
                                                 "Async Capable": false,
                                                 "Join Type": "Inner",
                                                 "Startup Cost": 5.02,
-                                                "Total Cost": 135247.23,
-                                                "Plan Rows": 3319,
+                                                "Total Cost": 135246.89,
+                                                "Plan Rows": 3317,
                                                 "Plan Width": 8,
-                                                "Actual Startup Time": 0.537,
-                                                "Actual Total Time": 9.4,
-                                                "Actual Rows": 59,
+                                                "Actual Startup Time": 0.44,
+                                                "Actual Total Time": 13.343,
+                                                "Actual Rows": 52,
                                                 "Actual Loops": 1,
                                                 "Inner Unique": false,
                                                 "Join Filter": "((wh1.profile_id <> wh2.profile_id) AND (wh1.content_id = wh2.content_id))",
-                                                "Rows Removed by Join Filter": 101382,
-                                                "Shared Hit Blocks": 4458,
-                                                "Shared Read Blocks": 0,
+                                                "Rows Removed by Join Filter": 86474,
+                                                "Shared Hit Blocks": 7250,
+                                                "Shared Read Blocks": 5,
                                                 "Shared Dirtied Blocks": 0,
                                                 "Shared Written Blocks": 0,
                                                 "Local Hit Blocks": 0,
@@ -1612,15 +1612,15 @@
                                                     "Relation Name": "watch_history",
                                                     "Alias": "wh2",
                                                     "Startup Cost": 0.42,
-                                                    "Total Cost": 19660.34,
+                                                    "Total Cost": 19660.0,
                                                     "Plan Rows": 300000,
                                                     "Plan Width": 16,
-                                                    "Actual Startup Time": 0.014,
-                                                    "Actual Total Time": 2.791,
-                                                    "Actual Rows": 4411,
+                                                    "Actual Startup Time": 0.016,
+                                                    "Actual Total Time": 4.307,
+                                                    "Actual Rows": 7211,
                                                     "Actual Loops": 1,
-                                                    "Shared Hit Blocks": 4432,
-                                                    "Shared Read Blocks": 0,
+                                                    "Shared Hit Blocks": 7235,
+                                                    "Shared Read Blocks": 5,
                                                     "Shared Dirtied Blocks": 0,
                                                     "Shared Written Blocks": 0,
                                                     "Local Hit Blocks": 0,
@@ -1640,10 +1640,10 @@
                                                     "Plan Rows": 22,
                                                     "Plan Width": 16,
                                                     "Actual Startup Time": 0.0,
-                                                    "Actual Total Time": 0.001,
-                                                    "Actual Rows": 23,
-                                                    "Actual Loops": 4411,
-                                                    "Shared Hit Blocks": 26,
+                                                    "Actual Total Time": 0.0,
+                                                    "Actual Rows": 12,
+                                                    "Actual Loops": 7211,
+                                                    "Shared Hit Blocks": 15,
                                                     "Shared Read Blocks": 0,
                                                     "Shared Dirtied Blocks": 0,
                                                     "Shared Written Blocks": 0,
@@ -1665,15 +1665,15 @@
                                                         "Total Cost": 86.83,
                                                         "Plan Rows": 22,
                                                         "Plan Width": 16,
-                                                        "Actual Startup Time": 0.01,
-                                                        "Actual Total Time": 0.016,
-                                                        "Actual Rows": 23,
+                                                        "Actual Startup Time": 0.016,
+                                                        "Actual Total Time": 0.021,
+                                                        "Actual Rows": 12,
                                                         "Actual Loops": 1,
-                                                        "Recheck Cond": "(profile_id = '7412'::smallint)",
+                                                        "Recheck Cond": "(profile_id = '12925'::smallint)",
                                                         "Rows Removed by Index Recheck": 0,
-                                                        "Exact Heap Blocks": 23,
+                                                        "Exact Heap Blocks": 12,
                                                         "Lossy Heap Blocks": 0,
-                                                        "Shared Hit Blocks": 26,
+                                                        "Shared Hit Blocks": 15,
                                                         "Shared Read Blocks": 0,
                                                         "Shared Dirtied Blocks": 0,
                                                         "Shared Written Blocks": 0,
@@ -1694,11 +1694,11 @@
                                                             "Total Cost": 4.59,
                                                             "Plan Rows": 22,
                                                             "Plan Width": 0,
-                                                            "Actual Startup Time": 0.008,
-                                                            "Actual Total Time": 0.008,
-                                                            "Actual Rows": 23,
+                                                            "Actual Startup Time": 0.013,
+                                                            "Actual Total Time": 0.013,
+                                                            "Actual Rows": 12,
                                                             "Actual Loops": 1,
-                                                            "Index Cond": "(profile_id = '7412'::smallint)",
+                                                            "Index Cond": "(profile_id = '12925'::smallint)",
                                                             "Shared Hit Blocks": 3,
                                                             "Shared Read Blocks": 0,
                                                             "Shared Dirtied Blocks": 0,
@@ -1737,13 +1737,13 @@
                                 "Total Cost": 0.32,
                                 "Plan Rows": 1,
                                 "Plan Width": 42,
-                                "Actual Startup Time": 0.001,
-                                "Actual Total Time": 0.001,
+                                "Actual Startup Time": 0.002,
+                                "Actual Total Time": 0.002,
                                 "Actual Rows": 1,
-                                "Actual Loops": 1102,
+                                "Actual Loops": 1115,
                                 "Index Cond": "(content_id = wh.content_id)",
                                 "Rows Removed by Index Recheck": 0,
-                                "Shared Hit Blocks": 3740,
+                                "Shared Hit Blocks": 3780,
                                 "Shared Read Blocks": 0,
                                 "Shared Dirtied Blocks": 0,
                                 "Shared Written Blocks": 0,
@@ -1765,7 +1765,7 @@
             ]
           },
           "Planning": {
-            "Shared Hit Blocks": 195,
+            "Shared Hit Blocks": 172,
             "Shared Read Blocks": 0,
             "Shared Dirtied Blocks": 0,
             "Shared Written Blocks": 0,
@@ -1776,16 +1776,16 @@
             "Temp Read Blocks": 0,
             "Temp Written Blocks": 0
           },
-          "Planning Time": 0.824,
+          "Planning Time": 0.811,
           "Triggers": [],
-          "Execution Time": 50.167
+          "Execution Time": 72.269
         }
       ],
       "mysql": {
         "query_block": {
           "select_id": 1,
           "cost_info": {
-            "query_cost": "719.15"
+            "query_cost": "632.89"
           },
           "ordering_operation": {
             "using_filesort": true,
@@ -1822,7 +1822,7 @@
                             "query_block": {
                               "select_id": 3,
                               "cost_info": {
-                                "query_cost": "1183.15"
+                                "query_cost": "633.90"
                               },
                               "duplicates_removal": {
                                 "using_temporary_table": true,
@@ -1844,14 +1844,14 @@
                                       "ref": [
                                         "const"
                                       ],
-                                      "rows_examined_per_scan": 23,
-                                      "rows_produced_per_join": 23,
+                                      "rows_examined_per_scan": 12,
+                                      "rows_produced_per_join": 12,
                                       "filtered": "100.00",
                                       "cost_info": {
-                                        "read_cost": "5.75",
-                                        "eval_cost": "2.30",
-                                        "prefix_cost": "8.05",
-                                        "data_read_per_join": "1K"
+                                        "read_cost": "3.00",
+                                        "eval_cost": "1.20",
+                                        "prefix_cost": "4.20",
+                                        "data_read_per_join": "576"
                                       },
                                       "used_columns": [
                                         "watch_id",
@@ -1876,21 +1876,21 @@
                                       "ref": [
                                         "vod.wh1.content_id"
                                       ],
-                                      "rows_examined_per_scan": 145,
-                                      "rows_produced_per_join": 3357,
-                                      "filtered": "100.00",
+                                      "rows_examined_per_scan": 149,
+                                      "rows_produced_per_join": 1131,
+                                      "filtered": "62.87",
                                       "cost_info": {
-                                        "read_cost": "839.36",
-                                        "eval_cost": "335.74",
-                                        "prefix_cost": "1183.15",
-                                        "data_read_per_join": "157K"
+                                        "read_cost": "449.79",
+                                        "eval_cost": "113.10",
+                                        "prefix_cost": "633.90",
+                                        "data_read_per_join": "53K"
                                       },
                                       "used_columns": [
                                         "watch_id",
                                         "profile_id",
                                         "content_id"
                                       ],
-                                      "attached_condition": "(7412 <> `vod`.`wh2`.`profile_id`)"
+                                      "attached_condition": "(12925 <> `vod`.`wh2`.`profile_id`)"
                                     }
                                   }
                                 ]
@@ -1918,14 +1918,14 @@
                     "ref": [
                       "<subquery2>.profile_id"
                     ],
-                    "rows_examined_per_scan": 22,
-                    "rows_produced_per_join": 22,
+                    "rows_examined_per_scan": 20,
+                    "rows_produced_per_join": 20,
                     "filtered": "100.00",
                     "cost_info": {
-                      "read_cost": "285.05",
-                      "eval_cost": "2.28",
-                      "prefix_cost": "418.19",
-                      "data_read_per_join": "1K"
+                      "read_cost": "251.39",
+                      "eval_cost": "2.01",
+                      "prefix_cost": "371.08",
+                      "data_read_per_join": "965"
                     },
                     "used_columns": [
                       "watch_id",
@@ -1951,13 +1951,13 @@
                       "vod.wh.content_id"
                     ],
                     "rows_examined_per_scan": 1,
-                    "rows_produced_per_join": 22,
+                    "rows_produced_per_join": 20,
                     "filtered": "100.00",
                     "cost_info": {
-                      "read_cost": "285.05",
-                      "eval_cost": "2.28",
-                      "prefix_cost": "705.52",
-                      "data_read_per_join": "173K"
+                      "read_cost": "251.39",
+                      "eval_cost": "2.01",
+                      "prefix_cost": "624.48",
+                      "data_read_per_join": "152K"
                     },
                     "used_columns": [
                       "content_id",
@@ -1995,14 +1995,14 @@
                           "ref": [
                             "const"
                           ],
-                          "rows_examined_per_scan": 23,
-                          "rows_produced_per_join": 23,
+                          "rows_examined_per_scan": 12,
+                          "rows_produced_per_join": 12,
                           "filtered": "100.00",
                           "cost_info": {
-                            "read_cost": "5.75",
-                            "eval_cost": "2.30",
-                            "prefix_cost": "8.05",
-                            "data_read_per_join": "1K"
+                            "read_cost": "3.00",
+                            "eval_cost": "1.20",
+                            "prefix_cost": "4.20",
+                            "data_read_per_join": "576"
                           },
                           "used_columns": [
                             "watch_id",
@@ -2028,7 +2028,7 @@
                 "namespace": "vod.watch_history",
                 "parsedQuery": {
                   "profile_id": {
-                    "$eq": 7412
+                    "$eq": 12925
                   }
                 },
                 "indexFilterSet": false,
@@ -2068,7 +2068,7 @@
                         "direction": "forward",
                         "indexBounds": {
                           "profile_id": [
-                            "[7412, 7412]"
+                            "[12925, 12925]"
                           ],
                           "started_at": [
                             "[MaxKey, MinKey]"
@@ -2079,21 +2079,21 @@
                   },
                   "slotBasedPlan": {
                     "slots": "$$RESULT=s13 env: { s5 = {\"profile_id\" : 1, \"started_at\" : -1} }",
-                    "stages": "[4] project [s13 = newObj(\"_id\", s10, \"score\", s12)] \n[4] project [s12 = (convert ( s11, int32) ?: s11)] \n[4] group [s10] [s11 = count()] spillSlots[s9] mergingExprs[sum(s9)] \n[4] project [s10 = (s8 ?: null)] \n[2] nlj inner [] [s1, s2, s3, s4, s5] \n    left \n        [1] ixseek KS(2C39E80F0104) KS(2C39E8F5FE04) s4 s1 s2 s3 [] @\"a64ebc60-204a-492f-892a-a61be727af96\" @\"profile_id_1_started_at_-1\" true \n    right \n        [2] limit 1ll \n        [2] seek s1 s6 s7 s2 s3 s4 s5 none none [s8 = content_id] @\"a64ebc60-204a-492f-892a-a61be727af96\" true false \n"
+                    "stages": "[4] project [s13 = newObj(\"_id\", s10, \"score\", s12)] \n[4] project [s12 = (convert ( s11, int32) ?: s11)] \n[4] group [s10] [s11 = count()] spillSlots[s9] mergingExprs[sum(s9)] \n[4] project [s10 = (s8 ?: null)] \n[2] nlj inner [] [s1, s2, s3, s4, s5] \n    left \n        [1] ixseek KS(2C64FA0F0104) KS(2C64FAF5FE04) s4 s1 s2 s3 [] @\"a43b05dc-c696-4684-a597-6d5fcea38923\" @\"profile_id_1_started_at_-1\" true \n    right \n        [2] limit 1ll \n        [2] seek s1 s6 s7 s2 s3 s4 s5 none none [s8 = content_id] @\"a43b05dc-c696-4684-a597-6d5fcea38923\" true false \n"
                   }
                 },
                 "rejectedPlans": []
               },
               "executionStats": {
                 "executionSuccess": true,
-                "nReturned": 23,
+                "nReturned": 12,
                 "executionTimeMillis": 0,
-                "totalKeysExamined": 23,
-                "totalDocsExamined": 23,
+                "totalKeysExamined": 12,
+                "totalDocsExamined": 12,
                 "executionStages": {
                   "stage": "project",
                   "planNodeId": 4,
-                  "nReturned": 23,
+                  "nReturned": 12,
                   "executionTimeMillisEstimate": 0,
                   "opens": 1,
                   "closes": 1,
@@ -2106,7 +2106,7 @@
                   "inputStage": {
                     "stage": "project",
                     "planNodeId": 4,
-                    "nReturned": 23,
+                    "nReturned": 12,
                     "executionTimeMillisEstimate": 0,
                     "opens": 1,
                     "closes": 1,
@@ -2119,7 +2119,7 @@
                     "inputStage": {
                       "stage": "group",
                       "planNodeId": 4,
-                      "nReturned": 23,
+                      "nReturned": 12,
                       "executionTimeMillisEstimate": 0,
                       "opens": 1,
                       "closes": 1,
@@ -2146,7 +2146,7 @@
                       "inputStage": {
                         "stage": "project",
                         "planNodeId": 4,
-                        "nReturned": 23,
+                        "nReturned": 12,
                         "executionTimeMillisEstimate": 0,
                         "opens": 1,
                         "closes": 1,
@@ -2159,23 +2159,23 @@
                         "inputStage": {
                           "stage": "nlj",
                           "planNodeId": 2,
-                          "nReturned": 23,
+                          "nReturned": 12,
                           "executionTimeMillisEstimate": 0,
                           "opens": 1,
                           "closes": 1,
                           "saveState": 1,
                           "restoreState": 1,
                           "isEOF": 1,
-                          "totalDocsExamined": 23,
-                          "totalKeysExamined": 23,
+                          "totalDocsExamined": 12,
+                          "totalKeysExamined": 12,
                           "collectionScans": 0,
-                          "collectionSeeks": 23,
+                          "collectionSeeks": 12,
                           "indexScans": 0,
                           "indexSeeks": 1,
                           "indexesUsed": [
                             "profile_id_1_started_at_-1"
                           ],
-                          "innerOpens": 23,
+                          "innerOpens": 12,
                           "innerCloses": 1,
                           "outerProjects": [],
                           "outerCorrelated": [
@@ -2188,7 +2188,7 @@
                           "outerStage": {
                             "stage": "ixseek",
                             "planNodeId": 1,
-                            "nReturned": 23,
+                            "nReturned": 12,
                             "executionTimeMillisEstimate": 0,
                             "opens": 1,
                             "closes": 1,
@@ -2196,24 +2196,24 @@
                             "restoreState": 1,
                             "isEOF": 1,
                             "indexName": "profile_id_1_started_at_-1",
-                            "keysExamined": 23,
+                            "keysExamined": 12,
                             "seeks": 1,
-                            "numReads": 24,
+                            "numReads": 13,
                             "indexKeySlot": 4,
                             "recordIdSlot": 1,
                             "snapshotIdSlot": 2,
                             "indexIdentSlot": 3,
                             "outputSlots": [],
                             "indexKeysToInclude": "00000000000000000000000000000000",
-                            "seekKeyLow": "KS(2C39E80F0104) ",
-                            "seekKeyHigh": "KS(2C39E8F5FE04) "
+                            "seekKeyLow": "KS(2C64FA0F0104) ",
+                            "seekKeyHigh": "KS(2C64FAF5FE04) "
                           },
                           "innerStage": {
                             "stage": "limit",
                             "planNodeId": 2,
-                            "nReturned": 23,
+                            "nReturned": 12,
                             "executionTimeMillisEstimate": 0,
-                            "opens": 23,
+                            "opens": 12,
                             "closes": 1,
                             "saveState": 1,
                             "restoreState": 1,
@@ -2222,14 +2222,14 @@
                             "inputStage": {
                               "stage": "seek",
                               "planNodeId": 2,
-                              "nReturned": 23,
+                              "nReturned": 12,
                               "executionTimeMillisEstimate": 0,
-                              "opens": 23,
+                              "opens": 12,
                               "closes": 1,
                               "saveState": 1,
                               "restoreState": 1,
                               "isEOF": 0,
-                              "numReads": 23,
+                              "numReads": 12,
                               "recordSlot": 6,
                               "recordIdSlot": 7,
                               "seekRecordIdSlot": 1,
@@ -2252,8 +2252,8 @@
                 }
               }
             },
-            "nReturned": 23,
-            "executionTimeMillisEstimate": 1
+            "nReturned": 12,
+            "executionTimeMillisEstimate": 0
           },
           {
             "$sort": {
@@ -2267,12 +2267,12 @@
             "spills": 0,
             "spilledDataStorageSize": 0,
             "nReturned": 10,
-            "executionTimeMillisEstimate": 1
+            "executionTimeMillisEstimate": 0
           }
         ],
         "queryShapeHash": "BBF13A6613EFB74EA54B6AB67FD0FE769D5A3DC61016F4CCD2928F6BFFE42D14",
         "serverInfo": {
-          "host": "44e4b6837b01",
+          "host": "a213d2e487c8",
           "port": 27017,
           "version": "8.0.20",
           "gitVersion": "28927c60881a488fcbc5fd4d925b410f33258827"
@@ -2294,7 +2294,7 @@
           "pipeline": [
             {
               "$match": {
-                "profile_id": 7412
+                "profile_id": 12925
               }
             },
             {
@@ -2323,10 +2323,10 @@
         "operator_type": "ProduceResults@neo4j",
         "arguments": {
           "Order": "score DESC",
-          "GlobalMemory": 465504,
+          "GlobalMemory": 238344,
           "planner-impl": "IDP",
           "Memory": 0,
-          "string-representation": "Cypher 25\n\nPlanner COST\n\nRuntime SLOTTED\n\nRuntime version 2026.02\n\n+----------------------+----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| Operator             | Id | Details                                                                                       | Estimated Rows | Rows | DB Hits | Memory (Bytes) | Page Cache Hits/Misses | Ordered by  | Indexes Used           |\n+----------------------+----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| +ProduceResults      |  0 | `rec.content_id`, `rec.title`, score                                                          |             10 |   10 |       0 |              0 |                    0/0 |             |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+             +------------------------+\n| +Top                 |  1 | score DESC LIMIT 10                                                                           |             10 |   10 |       0 |           2368 |                    0/0 | score DESC  |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| +EagerAggregation    |  2 | cache[rec.content_id] AS `rec.content_id`, cache[rec.title] AS `rec.title`, count(*) AS score |             33 |  820 |       0 |         206472 |                    0/0 |             |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| +CacheProperties     |  3 | cache[rec.content_id], cache[rec.title]                                                       |           1075 | 1069 |    2138 |                |                    0/0 |             |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+             +------------------------+\n| +AntiSemiApply       |  4 |                                                                                               |           1075 | 1069 |       0 |                |                    0/0 | shared DESC |                        |\n| |\\                   +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| | +Expand(Into)      |  5 | (p)-[:WATCHED]->(rec)                                                                         |             12 |    0 |   43920 |            944 |                    0/0 |             |                        |\n| | |                  +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| | +Argument          |  6 | p, rec                                                                                        |           1088 | 1203 |       0 |                |                    0/0 |             |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| +Filter              |  7 | rec:Content                                                                                   |           1088 | 1203 |    1203 |                |                    0/0 |             |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+             +------------------------+\n| +Expand(All)         |  8 | (similar)-[:WATCHED]->(rec)                                                                   |           1088 | 1203 |    1835 |                |                    0/0 |             |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+             +------------------------+\n| +Top                 |  9 | shared DESC LIMIT 50                                                                          |             50 |   50 |       0 |           5576 |                    0/0 | shared DESC |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| +EagerAggregation    | 10 | p, similar, COUNT(c) AS shared                                                                |             54 | 3117 |       0 |         465408 |                    0/0 |             |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| +Filter              | 11 | NOT similar = p AND NOT anon_1 = anon_0 AND similar:Profile                                   |           2909 | 3558 |    3558 |                |                    0/0 |             |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| +Expand(All)         | 12 | (c)<-[anon_1:WATCHED]-(similar)                                                               |           3264 | 3581 |    3752 |                |                    0/0 |             |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| +Filter              | 13 | c:Content                                                                                     |             22 |   23 |      23 |                |                    0/0 |             |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| +Expand(All)         | 14 | (p)-[anon_0:WATCHED]->(c)                                                                     |             22 |   23 |      37 |                |                    0/0 |             |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| +NodeUniqueIndexSeek | 15 | UNIQUE p:Profile(profile_id) WHERE profile_id = $pid                                          |              1 |    1 |       2 |                |                    0/0 |             | constraint_129c2d85: 1 |\n+----------------------+----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n\nTotal database accesses: 56468, total allocated memory: 465504\n",
+          "string-representation": "Cypher 25\n\nPlanner COST\n\nRuntime SLOTTED\n\nRuntime version 2026.02\n\n+----------------------+----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| Operator             | Id | Details                                                                                       | Estimated Rows | Rows | DB Hits | Memory (Bytes) | Page Cache Hits/Misses | Ordered by  | Indexes Used           |\n+----------------------+----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| +ProduceResults      |  0 | `rec.content_id`, `rec.title`, score                                                          |             10 |   10 |       0 |              0 |                    0/0 |             |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+             +------------------------+\n| +Top                 |  1 | score DESC LIMIT 10                                                                           |             10 |   10 |       0 |           2384 |                    0/0 | score DESC  |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| +EagerAggregation    |  2 | cache[rec.content_id] AS `rec.content_id`, cache[rec.title] AS `rec.title`, count(*) AS score |             33 |  794 |       0 |         202928 |                    0/0 |             |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| +CacheProperties     |  3 | cache[rec.content_id], cache[rec.title]                                                       |           1075 | 1028 |    2056 |                |                    0/0 |             |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+             +------------------------+\n| +AntiSemiApply       |  4 |                                                                                               |           1075 | 1028 |       0 |                |                    0/0 | shared DESC |                        |\n| |\\                   +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| | +Expand(Into)      |  5 | (p)-[:WATCHED]->(rec)                                                                         |             12 |    0 |   27478 |            944 |                    0/0 |             |                        |\n| | |                  +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| | +Argument          |  6 | p, rec                                                                                        |           1088 | 1133 |       0 |                |                    0/0 |             |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| +Filter              |  7 | rec:Content                                                                                   |           1088 | 1133 |    1133 |                |                    0/0 |             |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+             +------------------------+\n| +Expand(All)         |  8 | (similar)-[:WATCHED]->(rec)                                                                   |           1088 | 1133 |    1826 |                |                    0/0 |             |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+             +------------------------+\n| +Top                 |  9 | shared DESC LIMIT 50                                                                          |             50 |   50 |       0 |           5576 |                    0/0 | shared DESC |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| +EagerAggregation    | 10 | p, similar, COUNT(c) AS shared                                                                |             54 | 1677 |       0 |         238248 |                    0/0 |             |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| +Filter              | 11 | NOT similar = p AND NOT anon_1 = anon_0 AND similar:Profile                                   |           2909 | 1777 |    1777 |                |                    0/0 |             |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| +Expand(All)         | 12 | (c)<-[anon_1:WATCHED]-(similar)                                                               |           3264 | 1789 |    1881 |                |                    0/0 |             |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| +Filter              | 13 | c:Content                                                                                     |             22 |   12 |      12 |                |                    0/0 |             |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| +Expand(All)         | 14 | (p)-[anon_0:WATCHED]->(c)                                                                     |             22 |   12 |      24 |                |                    0/0 |             |                        |\n| |                    +----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n| +NodeUniqueIndexSeek | 15 | UNIQUE p:Profile(profile_id) WHERE profile_id = $pid                                          |              1 |    1 |       2 |                |                    0/0 |             | constraint_129c2d85: 1 |\n+----------------------+----+-----------------------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+-------------+------------------------+\n\nTotal database accesses: 36189, total allocated memory: 238344\n",
           "runtime": "SLOTTED",
           "runtime-impl": "SLOTTED",
           "version": "25",
@@ -2354,7 +2354,7 @@
             "arguments": {
               "Order": "score DESC",
               "Details": "score DESC LIMIT 10",
-              "Memory": 2368,
+              "Memory": 2384,
               "Id": 1,
               "EstimatedRows": 10.0,
               "PageCacheMisses": 0,
@@ -2374,12 +2374,12 @@
                 "operator_type": "EagerAggregation@neo4j",
                 "arguments": {
                   "Details": "cache[rec.content_id] AS `rec.content_id`, cache[rec.title] AS `rec.title`, count(*) AS score",
-                  "Memory": 206472,
+                  "Memory": 202928,
                   "Id": 2,
                   "EstimatedRows": 32.79010054275311,
                   "PageCacheMisses": 0,
                   "DbHits": 0,
-                  "Rows": 820,
+                  "Rows": 794,
                   "PageCacheHits": 0
                 },
                 "identifiers": [
@@ -2388,7 +2388,7 @@
                   "score"
                 ],
                 "db_hits": 0,
-                "rows": 820,
+                "rows": 794,
                 "children": [
                   {
                     "operator_type": "CacheProperties@neo4j",
@@ -2398,8 +2398,8 @@
                       "Id": 3,
                       "PageCacheMisses": 0,
                       "EstimatedRows": 1075.1906936038579,
-                      "DbHits": 2138,
-                      "Rows": 1069,
+                      "DbHits": 2056,
+                      "Rows": 1028,
                       "PageCacheHits": 0
                     },
                     "identifiers": [
@@ -2408,8 +2408,8 @@
                       "shared",
                       "rec"
                     ],
-                    "db_hits": 2138,
-                    "rows": 1069,
+                    "db_hits": 2056,
+                    "rows": 1028,
                     "children": [
                       {
                         "operator_type": "AntiSemiApply@neo4j",
@@ -2419,7 +2419,7 @@
                           "PageCacheMisses": 0,
                           "EstimatedRows": 1075.1906936038579,
                           "DbHits": 0,
-                          "Rows": 1069,
+                          "Rows": 1028,
                           "PageCacheHits": 0
                         },
                         "identifiers": [
@@ -2429,7 +2429,7 @@
                           "rec"
                         ],
                         "db_hits": 0,
-                        "rows": 1069,
+                        "rows": 1028,
                         "children": [
                           {
                             "operator_type": "Filter@neo4j",
@@ -2439,8 +2439,8 @@
                               "Id": 7,
                               "PageCacheMisses": 0,
                               "EstimatedRows": 1088.139281828074,
-                              "DbHits": 1203,
-                              "Rows": 1203,
+                              "DbHits": 1133,
+                              "Rows": 1133,
                               "PageCacheHits": 0
                             },
                             "identifiers": [
@@ -2449,8 +2449,8 @@
                               "shared",
                               "rec"
                             ],
-                            "db_hits": 1203,
-                            "rows": 1203,
+                            "db_hits": 1133,
+                            "rows": 1133,
                             "children": [
                               {
                                 "operator_type": "Expand(All)@neo4j",
@@ -2460,8 +2460,8 @@
                                   "Id": 8,
                                   "PageCacheMisses": 0,
                                   "EstimatedRows": 1088.139281828074,
-                                  "DbHits": 1835,
-                                  "Rows": 1203,
+                                  "DbHits": 1826,
+                                  "Rows": 1133,
                                   "PageCacheHits": 0
                                 },
                                 "identifiers": [
@@ -2470,8 +2470,8 @@
                                   "shared",
                                   "rec"
                                 ],
-                                "db_hits": 1835,
-                                "rows": 1203,
+                                "db_hits": 1826,
+                                "rows": 1133,
                                 "children": [
                                   {
                                     "operator_type": "Top@neo4j",
@@ -2498,12 +2498,12 @@
                                         "operator_type": "EagerAggregation@neo4j",
                                         "arguments": {
                                           "Details": "p, similar, COUNT(c) AS shared",
-                                          "Memory": 465408,
+                                          "Memory": 238248,
                                           "Id": 10,
                                           "EstimatedRows": 53.931403656185715,
                                           "PageCacheMisses": 0,
                                           "DbHits": 0,
-                                          "Rows": 3117,
+                                          "Rows": 1677,
                                           "PageCacheHits": 0
                                         },
                                         "identifiers": [
@@ -2512,7 +2512,7 @@
                                           "shared"
                                         ],
                                         "db_hits": 0,
-                                        "rows": 3117,
+                                        "rows": 1677,
                                         "children": [
                                           {
                                             "operator_type": "Filter@neo4j",
@@ -2521,8 +2521,8 @@
                                               "Id": 11,
                                               "PageCacheMisses": 0,
                                               "EstimatedRows": 2908.596300326442,
-                                              "DbHits": 3558,
-                                              "Rows": 3558,
+                                              "DbHits": 1777,
+                                              "Rows": 1777,
                                               "PageCacheHits": 0
                                             },
                                             "identifiers": [
@@ -2532,8 +2532,8 @@
                                               "anon_0",
                                               "anon_1"
                                             ],
-                                            "db_hits": 3558,
-                                            "rows": 3558,
+                                            "db_hits": 1777,
+                                            "rows": 1777,
                                             "children": [
                                               {
                                                 "operator_type": "Expand(All)@neo4j",
@@ -2542,8 +2542,8 @@
                                                   "Id": 12,
                                                   "PageCacheMisses": 0,
                                                   "EstimatedRows": 3264.417845484222,
-                                                  "DbHits": 3752,
-                                                  "Rows": 3581,
+                                                  "DbHits": 1881,
+                                                  "Rows": 1789,
                                                   "PageCacheHits": 0
                                                 },
                                                 "identifiers": [
@@ -2553,8 +2553,8 @@
                                                   "anon_0",
                                                   "anon_1"
                                                 ],
-                                                "db_hits": 3752,
-                                                "rows": 3581,
+                                                "db_hits": 1881,
+                                                "rows": 1789,
                                                 "children": [
                                                   {
                                                     "operator_type": "Filter@neo4j",
@@ -2563,8 +2563,8 @@
                                                       "Id": 13,
                                                       "PageCacheMisses": 0,
                                                       "EstimatedRows": 21.762785636561482,
-                                                      "DbHits": 23,
-                                                      "Rows": 23,
+                                                      "DbHits": 12,
+                                                      "Rows": 12,
                                                       "PageCacheHits": 0
                                                     },
                                                     "identifiers": [
@@ -2572,8 +2572,8 @@
                                                       "anon_0",
                                                       "c"
                                                     ],
-                                                    "db_hits": 23,
-                                                    "rows": 23,
+                                                    "db_hits": 12,
+                                                    "rows": 12,
                                                     "children": [
                                                       {
                                                         "operator_type": "Expand(All)@neo4j",
@@ -2582,8 +2582,8 @@
                                                           "Id": 14,
                                                           "PageCacheMisses": 0,
                                                           "EstimatedRows": 21.762785636561482,
-                                                          "DbHits": 37,
-                                                          "Rows": 23,
+                                                          "DbHits": 24,
+                                                          "Rows": 12,
                                                           "PageCacheHits": 0
                                                         },
                                                         "identifiers": [
@@ -2591,8 +2591,8 @@
                                                           "anon_0",
                                                           "c"
                                                         ],
-                                                        "db_hits": 37,
-                                                        "rows": 23,
+                                                        "db_hits": 24,
+                                                        "rows": 12,
                                                         "children": [
                                                           {
                                                             "operator_type": "NodeUniqueIndexSeek@neo4j",
@@ -2637,7 +2637,7 @@
                               "Id": 5,
                               "EstimatedRows": 11.840470966573166,
                               "PageCacheMisses": 0,
-                              "DbHits": 43920,
+                              "DbHits": 27478,
                               "Rows": 0,
                               "PageCacheHits": 0
                             },
@@ -2645,7 +2645,7 @@
                               "p",
                               "rec"
                             ],
-                            "db_hits": 43920,
+                            "db_hits": 27478,
                             "rows": 0,
                             "children": [
                               {
@@ -2656,7 +2656,7 @@
                                   "PageCacheMisses": 0,
                                   "EstimatedRows": 1088.139281828074,
                                   "DbHits": 0,
-                                  "Rows": 1203,
+                                  "Rows": 1133,
                                   "PageCacheHits": 0
                                 },
                                 "identifiers": [
@@ -2664,7 +2664,7 @@
                                   "rec"
                                 ],
                                 "db_hits": 0,
-                                "rows": 1203,
+                                "rows": 1133,
                                 "children": []
                               }
                             ]
@@ -2682,46 +2682,46 @@
     },
     "summary": {
       "postgres": {
-        "planning_time_ms": 0.824,
-        "execution_time_ms": 50.167,
-        "total_cost": 9128.42,
+        "planning_time_ms": 0.811,
+        "execution_time_ms": 72.269,
+        "total_cost": 9129.16,
         "actual_rows": 10,
         "scan_types": [
           {
             "type": "Seq Scan",
             "relation": "watch_history",
             "index": null,
-            "rows": 296419
+            "rows": 298211
           },
           {
             "type": "Bitmap Heap Scan",
             "relation": "watch_history",
             "index": null,
-            "rows": 23
+            "rows": 12
           },
           {
             "type": "Bitmap Index Scan",
             "relation": "",
             "index": "idx_wh_profile_started",
-            "rows": 23
+            "rows": 12
           },
           {
             "type": "Index Scan",
             "relation": "watch_history",
             "index": "idx_wh_profile_started",
-            "rows": 4411
+            "rows": 7211
           },
           {
             "type": "Bitmap Heap Scan",
             "relation": "watch_history",
             "index": null,
-            "rows": 23
+            "rows": 12
           },
           {
             "type": "Bitmap Index Scan",
             "relation": "",
             "index": "idx_wh_profile_started",
-            "rows": 23
+            "rows": 12
           },
           {
             "type": "Index Scan",
@@ -2744,7 +2744,7 @@
             "table_name": "wh",
             "access_type": "ref",
             "key": "idx_wh_profile_started",
-            "rows_examined": 22,
+            "rows_examined": 20,
             "filtered": "100.00"
           },
           {
@@ -2764,14 +2764,14 @@
         ]
       },
       "mongo": {
-        "n_returned": 23,
-        "total_docs_examined": 23,
-        "total_keys_examined": 23,
+        "n_returned": 12,
+        "total_docs_examined": 12,
+        "total_keys_examined": 12,
         "execution_time_ms": 0,
         "scan_type": "nlj"
       },
       "neo4j": {
-        "total_db_hits": 56468,
+        "total_db_hits": 36189,
         "result_rows": 10,
         "operators": [
           "ProduceResults@neo4j",
@@ -2803,16 +2803,16 @@
             "Node Type": "Limit",
             "Parallel Aware": false,
             "Async Capable": false,
-            "Startup Cost": 5032.73,
-            "Total Cost": 5032.98,
+            "Startup Cost": 5035.56,
+            "Total Cost": 5035.81,
             "Plan Rows": 100,
             "Plan Width": 50,
-            "Actual Startup Time": 12.422,
-            "Actual Total Time": 12.431,
+            "Actual Startup Time": 18.054,
+            "Actual Total Time": 18.065,
             "Actual Rows": 100,
             "Actual Loops": 1,
-            "Shared Hit Blocks": 3363,
-            "Shared Read Blocks": 79,
+            "Shared Hit Blocks": 3359,
+            "Shared Read Blocks": 78,
             "Shared Dirtied Blocks": 0,
             "Shared Written Blocks": 0,
             "Local Hit Blocks": 0,
@@ -2827,12 +2827,12 @@
                 "Parent Relationship": "Outer",
                 "Parallel Aware": false,
                 "Async Capable": false,
-                "Startup Cost": 5032.73,
-                "Total Cost": 5052.41,
-                "Plan Rows": 7871,
+                "Startup Cost": 5035.56,
+                "Total Cost": 5055.07,
+                "Plan Rows": 7806,
                 "Plan Width": 50,
-                "Actual Startup Time": 12.421,
-                "Actual Total Time": 12.425,
+                "Actual Startup Time": 18.052,
+                "Actual Total Time": 18.058,
                 "Actual Rows": 100,
                 "Actual Loops": 1,
                 "Sort Key": [
@@ -2841,8 +2841,8 @@
                 "Sort Method": "top-N heapsort",
                 "Sort Space Used": 42,
                 "Sort Space Type": "Memory",
-                "Shared Hit Blocks": 3363,
-                "Shared Read Blocks": 79,
+                "Shared Hit Blocks": 3359,
+                "Shared Read Blocks": 78,
                 "Shared Dirtied Blocks": 0,
                 "Shared Written Blocks": 0,
                 "Local Hit Blocks": 0,
@@ -2859,12 +2859,12 @@
                     "Parent Relationship": "Outer",
                     "Parallel Aware": false,
                     "Async Capable": false,
-                    "Startup Cost": 4653.2,
-                    "Total Cost": 4731.91,
-                    "Plan Rows": 7871,
+                    "Startup Cost": 4659.16,
+                    "Total Cost": 4737.22,
+                    "Plan Rows": 7806,
                     "Plan Width": 50,
-                    "Actual Startup Time": 12.139,
-                    "Actual Total Time": 12.27,
+                    "Actual Startup Time": 17.534,
+                    "Actual Total Time": 17.762,
                     "Actual Rows": 2000,
                     "Actual Loops": 1,
                     "Group Key": [
@@ -2874,8 +2874,8 @@
                     "HashAgg Batches": 1,
                     "Peak Memory Usage": 657,
                     "Disk Usage": 0,
-                    "Shared Hit Blocks": 3363,
-                    "Shared Read Blocks": 79,
+                    "Shared Hit Blocks": 3359,
+                    "Shared Read Blocks": 78,
                     "Shared Dirtied Blocks": 0,
                     "Shared Written Blocks": 0,
                     "Local Hit Blocks": 0,
@@ -2891,18 +2891,18 @@
                         "Parallel Aware": false,
                         "Async Capable": false,
                         "Join Type": "Inner",
-                        "Startup Cost": 1446.73,
-                        "Total Cost": 4510.49,
-                        "Plan Rows": 28543,
+                        "Startup Cost": 1445.89,
+                        "Total Cost": 4514.75,
+                        "Plan Rows": 28881,
                         "Plan Width": 42,
-                        "Actual Startup Time": 2.008,
-                        "Actual Total Time": 9.381,
+                        "Actual Startup Time": 2.819,
+                        "Actual Total Time": 13.29,
                         "Actual Rows": 28870,
                         "Actual Loops": 1,
                         "Inner Unique": true,
                         "Hash Cond": "(wh.content_id = c.content_id)",
-                        "Shared Hit Blocks": 3363,
-                        "Shared Read Blocks": 79,
+                        "Shared Hit Blocks": 3359,
+                        "Shared Read Blocks": 78,
                         "Shared Dirtied Blocks": 0,
                         "Shared Written Blocks": 0,
                         "Local Hit Blocks": 0,
@@ -2919,20 +2919,20 @@
                             "Async Capable": false,
                             "Relation Name": "watch_history",
                             "Alias": "wh",
-                            "Startup Cost": 537.63,
-                            "Total Cost": 3526.42,
-                            "Plan Rows": 28543,
+                            "Startup Cost": 544.25,
+                            "Total Cost": 3537.26,
+                            "Plan Rows": 28881,
                             "Plan Width": 8,
-                            "Actual Startup Time": 1.379,
-                            "Actual Total Time": 5.022,
+                            "Actual Startup Time": 1.933,
+                            "Actual Total Time": 7.462,
                             "Actual Rows": 28870,
                             "Actual Loops": 1,
                             "Recheck Cond": "(started_at >= '2025-06-01 00:00:00'::timestamp without time zone)",
                             "Rows Removed by Index Recheck": 0,
-                            "Exact Heap Blocks": 2628,
+                            "Exact Heap Blocks": 2629,
                             "Lossy Heap Blocks": 0,
-                            "Shared Hit Blocks": 2631,
-                            "Shared Read Blocks": 79,
+                            "Shared Hit Blocks": 2633,
+                            "Shared Read Blocks": 78,
                             "Shared Dirtied Blocks": 0,
                             "Shared Written Blocks": 0,
                             "Local Hit Blocks": 0,
@@ -2949,16 +2949,16 @@
                                 "Async Capable": false,
                                 "Index Name": "idx_wh_started_at",
                                 "Startup Cost": 0.0,
-                                "Total Cost": 530.5,
-                                "Plan Rows": 28543,
+                                "Total Cost": 537.03,
+                                "Plan Rows": 28881,
                                 "Plan Width": 0,
-                                "Actual Startup Time": 1.219,
-                                "Actual Total Time": 1.219,
-                                "Actual Rows": 28960,
+                                "Actual Startup Time": 1.686,
+                                "Actual Total Time": 1.687,
+                                "Actual Rows": 28961,
                                 "Actual Loops": 1,
                                 "Index Cond": "(started_at >= '2025-06-01 00:00:00'::timestamp without time zone)",
-                                "Shared Hit Blocks": 3,
-                                "Shared Read Blocks": 79,
+                                "Shared Hit Blocks": 4,
+                                "Shared Read Blocks": 78,
                                 "Shared Dirtied Blocks": 0,
                                 "Shared Written Blocks": 0,
                                 "Local Hit Blocks": 0,
@@ -2975,12 +2975,12 @@
                             "Parent Relationship": "Inner",
                             "Parallel Aware": false,
                             "Async Capable": false,
-                            "Startup Cost": 810.71,
-                            "Total Cost": 810.71,
-                            "Plan Rows": 7871,
+                            "Startup Cost": 804.06,
+                            "Total Cost": 804.06,
+                            "Plan Rows": 7806,
                             "Plan Width": 42,
-                            "Actual Startup Time": 0.622,
-                            "Actual Total Time": 0.623,
+                            "Actual Startup Time": 0.879,
+                            "Actual Total Time": 0.879,
                             "Actual Rows": 2000,
                             "Actual Loops": 1,
                             "Hash Buckets": 8192,
@@ -2988,7 +2988,7 @@
                             "Hash Batches": 1,
                             "Original Hash Batches": 1,
                             "Peak Memory Usage": 210,
-                            "Shared Hit Blocks": 732,
+                            "Shared Hit Blocks": 726,
                             "Shared Read Blocks": 0,
                             "Shared Dirtied Blocks": 0,
                             "Shared Written Blocks": 0,
@@ -3007,14 +3007,14 @@
                                 "Relation Name": "content",
                                 "Alias": "c",
                                 "Startup Cost": 0.0,
-                                "Total Cost": 810.71,
-                                "Plan Rows": 7871,
+                                "Total Cost": 804.06,
+                                "Plan Rows": 7806,
                                 "Plan Width": 42,
-                                "Actual Startup Time": 0.016,
-                                "Actual Total Time": 0.478,
+                                "Actual Startup Time": 0.014,
+                                "Actual Total Time": 0.611,
                                 "Actual Rows": 2000,
                                 "Actual Loops": 1,
-                                "Shared Hit Blocks": 732,
+                                "Shared Hit Blocks": 726,
                                 "Shared Read Blocks": 0,
                                 "Shared Dirtied Blocks": 0,
                                 "Shared Written Blocks": 0,
@@ -3047,9 +3047,9 @@
             "Temp Read Blocks": 0,
             "Temp Written Blocks": 0
           },
-          "Planning Time": 0.192,
+          "Planning Time": 0.218,
           "Triggers": [],
-          "Execution Time": 12.773
+          "Execution Time": 18.325
         }
       ],
       "mysql": {
@@ -3169,7 +3169,7 @@
                   },
                   "slotBasedPlan": {
                     "slots": "$$RESULT=s9 env: {  }",
-                    "stages": "[3] project [s9 = newObj(\"_id\", s6, \"views\", s8)] \n[3] project [s8 = (convert ( s7, int32) ?: s7)] \n[3] group [s6] [s7 = count()] spillSlots[s5] mergingExprs[sum(s5)] \n[3] project [s6 = (s1 ?: null)] \n[1] filter {traverseF(s2, lambda(l2.0) { ((move(l2.0) >= \"2025-06-01\") ?: false) }, false)} \n[1] scan s3 s4 none none none none none none lowPriority [s1 = content_id, s2 = started_at] @\"a64ebc60-204a-492f-892a-a61be727af96\" true false "
+                    "stages": "[3] project [s9 = newObj(\"_id\", s6, \"views\", s8)] \n[3] project [s8 = (convert ( s7, int32) ?: s7)] \n[3] group [s6] [s7 = count()] spillSlots[s5] mergingExprs[sum(s5)] \n[3] project [s6 = (s1 ?: null)] \n[1] filter {traverseF(s2, lambda(l2.0) { ((move(l2.0) >= \"2025-06-01\") ?: false) }, false)} \n[1] scan s3 s4 none none none none none none lowPriority [s1 = content_id, s2 = started_at] @\"a43b05dc-c696-4684-a597-6d5fcea38923\" true false "
                   }
                 },
                 "rejectedPlans": []
@@ -3177,18 +3177,18 @@
               "executionStats": {
                 "executionSuccess": true,
                 "nReturned": 2000,
-                "executionTimeMillis": 62,
+                "executionTimeMillis": 92,
                 "totalKeysExamined": 0,
                 "totalDocsExamined": 300000,
                 "executionStages": {
                   "stage": "project",
                   "planNodeId": 3,
                   "nReturned": 2000,
-                  "executionTimeMillisEstimate": 59,
+                  "executionTimeMillisEstimate": 79,
                   "opens": 1,
                   "closes": 1,
-                  "saveState": 9,
-                  "restoreState": 9,
+                  "saveState": 11,
+                  "restoreState": 11,
                   "isEOF": 1,
                   "projections": {
                     "9": "newObj(\"_id\", s6, \"views\", s8) "
@@ -3197,11 +3197,11 @@
                     "stage": "project",
                     "planNodeId": 3,
                     "nReturned": 2000,
-                    "executionTimeMillisEstimate": 59,
+                    "executionTimeMillisEstimate": 79,
                     "opens": 1,
                     "closes": 1,
-                    "saveState": 9,
-                    "restoreState": 9,
+                    "saveState": 11,
+                    "restoreState": 11,
                     "isEOF": 1,
                     "projections": {
                       "8": "(convert ( s7, int32) ?: s7) "
@@ -3210,11 +3210,11 @@
                       "stage": "group",
                       "planNodeId": 3,
                       "nReturned": 2000,
-                      "executionTimeMillisEstimate": 59,
+                      "executionTimeMillisEstimate": 79,
                       "opens": 1,
                       "closes": 1,
-                      "saveState": 9,
-                      "restoreState": 9,
+                      "saveState": 11,
+                      "restoreState": 11,
                       "isEOF": 1,
                       "groupBySlots": [
                         6
@@ -3237,11 +3237,11 @@
                         "stage": "project",
                         "planNodeId": 3,
                         "nReturned": 28870,
-                        "executionTimeMillisEstimate": 59,
+                        "executionTimeMillisEstimate": 69,
                         "opens": 1,
                         "closes": 1,
-                        "saveState": 9,
-                        "restoreState": 9,
+                        "saveState": 11,
+                        "restoreState": 11,
                         "isEOF": 1,
                         "projections": {
                           "6": "(s1 ?: null) "
@@ -3250,11 +3250,11 @@
                           "stage": "filter",
                           "planNodeId": 1,
                           "nReturned": 28870,
-                          "executionTimeMillisEstimate": 59,
+                          "executionTimeMillisEstimate": 69,
                           "opens": 1,
                           "closes": 1,
-                          "saveState": 9,
-                          "restoreState": 9,
+                          "saveState": 11,
+                          "restoreState": 11,
                           "isEOF": 1,
                           "numTested": 300000,
                           "filter": "traverseF(s2, lambda(l2.0) { ((move(l2.0) >= \"2025-06-01\") ?: false) }, false) ",
@@ -3262,11 +3262,11 @@
                             "stage": "scan",
                             "planNodeId": 1,
                             "nReturned": 300000,
-                            "executionTimeMillisEstimate": 38,
+                            "executionTimeMillisEstimate": 29,
                             "opens": 1,
                             "closes": 1,
-                            "saveState": 9,
-                            "restoreState": 9,
+                            "saveState": 11,
+                            "restoreState": 11,
                             "isEOF": 1,
                             "numReads": 300000,
                             "recordSlot": 3,
@@ -3288,7 +3288,7 @@
               }
             },
             "nReturned": 2000,
-            "executionTimeMillisEstimate": 61
+            "executionTimeMillisEstimate": 89
           },
           {
             "$sort": {
@@ -3302,7 +3302,7 @@
             "spills": 0,
             "spilledDataStorageSize": 0,
             "nReturned": 100,
-            "executionTimeMillisEstimate": 61
+            "executionTimeMillisEstimate": 90
           },
           {
             "$lookup": {
@@ -3318,12 +3318,12 @@
               "_id_"
             ],
             "nReturned": 100,
-            "executionTimeMillisEstimate": 63
+            "executionTimeMillisEstimate": 93
           }
         ],
         "queryShapeHash": "1A465BB4EEF751FFD6B28FB0C81ED81A054CD7660046F8008134BE6AB30C85C7",
         "serverInfo": {
-          "host": "44e4b6837b01",
+          "host": "a213d2e487c8",
           "port": 27017,
           "version": "8.0.20",
           "gitVersion": "28927c60881a488fcbc5fd4d925b410f33258827"
@@ -3387,7 +3387,7 @@
           "GlobalMemory": 493448,
           "planner-impl": "IDP",
           "Memory": 0,
-          "string-representation": "Cypher 25\n\nPlanner COST\n\nRuntime SLOTTED\n\nRuntime version 2026.02\n\n+-------------------+----+---------------------------------------------------------------------------------------+----------------+--------+---------+----------------+------------------------+------------+\n| Operator          | Id | Details                                                                               | Estimated Rows | Rows   | DB Hits | Memory (Bytes) | Page Cache Hits/Misses | Ordered by |\n+-------------------+----+---------------------------------------------------------------------------------------+----------------+--------+---------+----------------+------------------------+------------+\n| +ProduceResults   |  0 | `c.content_id`, `c.title`, views                                                      |            100 |    100 |       0 |              0 |                    0/0 |            |\n| |                 +----+---------------------------------------------------------------------------------------+----------------+--------+---------+----------------+------------------------+            |\n| +Top              |  1 | views DESC LIMIT 100                                                                  |            100 |    100 |       0 |          21384 |                    0/0 | views DESC |\n| |                 +----+---------------------------------------------------------------------------------------+----------------+--------+---------+----------------+------------------------+------------+\n| +EagerAggregation |  2 | cache[c.content_id] AS `c.content_id`, cache[c.title] AS `c.title`, count(*) AS views |            346 |   2000 |       0 |         493384 |                    0/0 |            |\n| |                 +----+---------------------------------------------------------------------------------------+----------------+--------+---------+----------------+------------------------+------------+\n| +Filter           |  3 | w.started_at >= $autostring_0 AND p:Profile                                           |         120000 |  28870 |  328870 |                |                    0/0 |            |\n| |                 +----+---------------------------------------------------------------------------------------+----------------+--------+---------+----------------+------------------------+------------+\n| +Expand(All)      |  4 | (c)<-[w:WATCHED]-(p)                                                                  |         300000 | 300000 |  314807 |                |                    0/0 |            |\n| |                 +----+---------------------------------------------------------------------------------------+----------------+--------+---------+----------------+------------------------+------------+\n| +CacheProperties  |  5 | cache[c.content_id], cache[c.title]                                                   |           2000 |   2000 |    4000 |                |                    0/0 |            |\n| |                 +----+---------------------------------------------------------------------------------------+----------------+--------+---------+----------------+------------------------+------------+\n| +NodeByLabelScan  |  6 | c:Content                                                                             |           2000 |   2000 |    2001 |                |                    0/0 |            |\n+-------------------+----+---------------------------------------------------------------------------------------+----------------+--------+---------+----------------+------------------------+------------+\n\nTotal database accesses: 649678, total allocated memory: 493448\n",
+          "string-representation": "Cypher 25\n\nPlanner COST\n\nRuntime SLOTTED\n\nRuntime version 2026.02\n\n+-------------------+----+---------------------------------------------------------------------------------------+----------------+--------+---------+----------------+------------------------+------------+\n| Operator          | Id | Details                                                                               | Estimated Rows | Rows   | DB Hits | Memory (Bytes) | Page Cache Hits/Misses | Ordered by |\n+-------------------+----+---------------------------------------------------------------------------------------+----------------+--------+---------+----------------+------------------------+------------+\n| +ProduceResults   |  0 | `c.content_id`, `c.title`, views                                                      |            100 |    100 |       0 |              0 |                    0/0 |            |\n| |                 +----+---------------------------------------------------------------------------------------+----------------+--------+---------+----------------+------------------------+            |\n| +Top              |  1 | views DESC LIMIT 100                                                                  |            100 |    100 |       0 |          21384 |                    0/0 | views DESC |\n| |                 +----+---------------------------------------------------------------------------------------+----------------+--------+---------+----------------+------------------------+------------+\n| +EagerAggregation |  2 | cache[c.content_id] AS `c.content_id`, cache[c.title] AS `c.title`, count(*) AS views |            346 |   2000 |       0 |         493384 |                    0/0 |            |\n| |                 +----+---------------------------------------------------------------------------------------+----------------+--------+---------+----------------+------------------------+------------+\n| +Filter           |  3 | w.started_at >= $autostring_0 AND p:Profile                                           |         120000 |  28870 |  328870 |                |                    0/0 |            |\n| |                 +----+---------------------------------------------------------------------------------------+----------------+--------+---------+----------------+------------------------+------------+\n| +Expand(All)      |  4 | (c)<-[w:WATCHED]-(p)                                                                  |         300000 | 300000 |  314807 |                |                    0/0 |            |\n| |                 +----+---------------------------------------------------------------------------------------+----------------+--------+---------+----------------+------------------------+------------+\n| +CacheProperties  |  5 | cache[c.content_id], cache[c.title]                                                   |           2000 |   2000 |    4000 |                |                    0/0 |            |\n| |                 +----+---------------------------------------------------------------------------------------+----------------+--------+---------+----------------+------------------------+------------+\n| +Filter           |  6 | c:Content                                                                             |           2000 |   2000 |   84231 |                |                    0/0 |            |\n| |                 +----+---------------------------------------------------------------------------------------+----------------+--------+---------+----------------+------------------------+------------+\n| +AllNodesScan     |  7 | c                                                                                     |          84231 |  84231 |   84232 |                |                    0/0 |            |\n+-------------------+----+---------------------------------------------------------------------------------------+----------------+--------+---------+----------------+------------------------+------------+\n\nTotal database accesses: 816140, total allocated memory: 493448\n",
           "runtime": "SLOTTED",
           "runtime-impl": "SLOTTED",
           "version": "25",
@@ -3507,22 +3507,41 @@
                             "rows": 2000,
                             "children": [
                               {
-                                "operator_type": "NodeByLabelScan@neo4j",
+                                "operator_type": "Filter@neo4j",
                                 "arguments": {
                                   "Details": "c:Content",
                                   "Id": 6,
                                   "PageCacheMisses": 0,
                                   "EstimatedRows": 2000.0,
-                                  "DbHits": 2001,
+                                  "DbHits": 84231,
                                   "Rows": 2000,
                                   "PageCacheHits": 0
                                 },
                                 "identifiers": [
                                   "c"
                                 ],
-                                "db_hits": 2001,
+                                "db_hits": 84231,
                                 "rows": 2000,
-                                "children": []
+                                "children": [
+                                  {
+                                    "operator_type": "AllNodesScan@neo4j",
+                                    "arguments": {
+                                      "Details": "c",
+                                      "Id": 7,
+                                      "PageCacheMisses": 0,
+                                      "EstimatedRows": 84231.0,
+                                      "DbHits": 84232,
+                                      "Rows": 84231,
+                                      "PageCacheHits": 0
+                                    },
+                                    "identifiers": [
+                                      "c"
+                                    ],
+                                    "db_hits": 84232,
+                                    "rows": 84231,
+                                    "children": []
+                                  }
+                                ]
                               }
                             ]
                           }
@@ -3539,9 +3558,9 @@
     },
     "summary": {
       "postgres": {
-        "planning_time_ms": 0.192,
-        "execution_time_ms": 12.773,
-        "total_cost": 5032.98,
+        "planning_time_ms": 0.218,
+        "execution_time_ms": 18.325,
+        "total_cost": 5035.81,
         "actual_rows": 100,
         "scan_types": [
           {
@@ -3554,7 +3573,7 @@
             "type": "Bitmap Index Scan",
             "relation": "",
             "index": "idx_wh_started_at",
-            "rows": 28960
+            "rows": 28961
           },
           {
             "type": "Seq Scan",
@@ -3586,11 +3605,11 @@
         "n_returned": 2000,
         "total_docs_examined": 300000,
         "total_keys_examined": 0,
-        "execution_time_ms": 62,
+        "execution_time_ms": 92,
         "scan_type": "scan"
       },
       "neo4j": {
-        "total_db_hits": 649678,
+        "total_db_hits": 816140,
         "result_rows": 100,
         "operators": [
           "ProduceResults@neo4j",
@@ -3599,7 +3618,8 @@
           "Filter@neo4j",
           "Expand(All)@neo4j",
           "CacheProperties@neo4j",
-          "NodeByLabelScan@neo4j"
+          "Filter@neo4j",
+          "AllNodesScan@neo4j"
         ]
       }
     }
@@ -3614,14 +3634,14 @@
             "Parallel Aware": false,
             "Async Capable": false,
             "Startup Cost": 0.28,
-            "Total Cost": 223.07,
+            "Total Cost": 222.87,
             "Plan Rows": 20,
             "Plan Width": 80,
-            "Actual Startup Time": 0.164,
-            "Actual Total Time": 0.811,
+            "Actual Startup Time": 0.187,
+            "Actual Total Time": 1.23,
             "Actual Rows": 20,
             "Actual Loops": 1,
-            "Shared Hit Blocks": 2078,
+            "Shared Hit Blocks": 2079,
             "Shared Read Blocks": 0,
             "Shared Dirtied Blocks": 0,
             "Shared Written Blocks": 0,
@@ -3642,16 +3662,16 @@
                 "Relation Name": "content",
                 "Alias": "content",
                 "Startup Cost": 0.28,
-                "Total Cost": 3186.16,
-                "Plan Rows": 286,
+                "Total Cost": 3161.02,
+                "Plan Rows": 284,
                 "Plan Width": 80,
-                "Actual Startup Time": 0.163,
-                "Actual Total Time": 0.808,
+                "Actual Startup Time": 0.186,
+                "Actual Total Time": 1.226,
                 "Actual Rows": 20,
                 "Actual Loops": 1,
                 "Filter": "((title)::text ~~* '%Interface%'::text)",
                 "Rows Removed by Filter": 675,
-                "Shared Hit Blocks": 2078,
+                "Shared Hit Blocks": 2079,
                 "Shared Read Blocks": 0,
                 "Shared Dirtied Blocks": 0,
                 "Shared Written Blocks": 0,
@@ -3676,9 +3696,9 @@
             "Temp Read Blocks": 0,
             "Temp Written Blocks": 0
           },
-          "Planning Time": 0.567,
+          "Planning Time": 0.578,
           "Triggers": [],
-          "Execution Time": 0.822
+          "Execution Time": 1.247
         }
       ],
       "mysql": {
@@ -3840,7 +3860,7 @@
               "memLimit": 104857600,
               "limitAmount": 20,
               "type": "default",
-              "totalDataSizeSorted": 136498,
+              "totalDataSizeSorted": 146086,
               "usedDisk": false,
               "spills": 0,
               "spilledDataStorageSize": 0,
@@ -3939,7 +3959,7 @@
           "$db": "vod"
         },
         "serverInfo": {
-          "host": "44e4b6837b01",
+          "host": "a213d2e487c8",
           "port": 27017,
           "version": "8.0.20",
           "gitVersion": "28927c60881a488fcbc5fd4d925b410f33258827"
@@ -3962,10 +3982,10 @@
         "operator_type": "ProduceResults@neo4j",
         "arguments": {
           "Order": "`c.popularity_score` DESC",
-          "GlobalMemory": 2568,
+          "GlobalMemory": 4432,
           "planner-impl": "IDP",
           "Memory": 0,
-          "string-representation": "Cypher 25\n\nPlanner COST\n\nRuntime SLOTTED\n\nRuntime version 2026.02\n\n+------------------------+----+--------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+---------------------------+-------------------+\n| Operator               | Id | Details                                                            | Estimated Rows | Rows | DB Hits | Memory (Bytes) | Page Cache Hits/Misses | Ordered by                | Indexes Used      |\n+------------------------+----+--------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+---------------------------+-------------------+\n| +ProduceResults        |  0 | `c.content_id`, `c.title`, `c.popularity_score`                    |              6 |   20 |       0 |              0 |                    0/0 |                           |                   |\n| |                      +----+--------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+                           +-------------------+\n| +Projection            |  1 | cache[c.content_id] AS `c.content_id`, cache[c.title] AS `c.title` |              6 |   20 |       0 |                |                    0/0 |                           |                   |\n| |                      +----+--------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+                           +-------------------+\n| +CacheProperties       |  2 | cache[c.content_id], cache[c.title]                                |              6 |   20 |      40 |                |                    0/0 |                           |                   |\n| |                      +----+--------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+                           +-------------------+\n| +Top                   |  3 | `c.popularity_score` DESC LIMIT 20                                 |              6 |   20 |       0 |           2504 |                    0/0 | `c.popularity_score` DESC |                   |\n| |                      +----+--------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+---------------------------+-------------------+\n| +Projection            |  4 | c.popularity_score AS `c.popularity_score`                         |              6 |   45 |      45 |                |                    0/0 |                           |                   |\n| |                      +----+--------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+---------------------------+-------------------+\n| +NodeIndexContainsScan |  5 | TEXT INDEX c:Content(title) WHERE title CONTAINS $term             |              6 |   45 |      46 |                |                    0/0 |                           | index_dfa45a5c: 1 |\n+------------------------+----+--------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+---------------------------+-------------------+\n\nTotal database accesses: 131, total allocated memory: 2568\n",
+          "string-representation": "Cypher 25\n\nPlanner COST\n\nRuntime SLOTTED\n\nRuntime version 2026.02\n\n+------------------+----+-----------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+---------------------------+\n| Operator         | Id | Details                                                                           | Estimated Rows | Rows | DB Hits | Memory (Bytes) | Page Cache Hits/Misses | Ordered by                |\n+------------------+----+-----------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+---------------------------+\n| +ProduceResults  |  0 | `c.content_id`, `c.title`, `c.popularity_score`                                   |             10 |   20 |       0 |              0 |                    0/0 |                           |\n| |                +----+-----------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+                           |\n| +Projection      |  1 | cache[c.content_id] AS `c.content_id`, cache[c.title] AS `c.title`                |             10 |   20 |       0 |                |                    0/0 |                           |\n| |                +----+-----------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+                           |\n| +CacheProperties |  2 | cache[c.content_id], cache[c.title]                                               |             10 |   20 |      40 |                |                    0/0 |                           |\n| |                +----+-----------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+                           |\n| +Top             |  3 | `c.popularity_score` DESC LIMIT 20                                                |             10 |   20 |       0 |           4352 |                    0/0 | `c.popularity_score` DESC |\n| |                +----+-----------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+---------------------------+\n| +Projection      |  4 | c.popularity_score AS `c.popularity_score`                                        |             10 |   66 |      66 |                |                    0/0 |                           |\n| |                +----+-----------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+---------------------------+\n| +ProcedureCall   |  5 | db.index.fulltext.queryNodes($autostring_0, $term) :: (c :: NODE, score :: FLOAT) |             10 |   66 |         |              0 |                    0/0 |                           |\n+------------------+----+-----------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+---------------------------+\n\nTotal database accesses: 106 + ?, total allocated memory: 4432\n",
           "runtime": "SLOTTED",
           "runtime-impl": "SLOTTED",
           "version": "25",
@@ -3974,17 +3994,18 @@
           "planner-version": "2026.02",
           "runtime-version": "2026.02",
           "Id": 0,
-          "EstimatedRows": 6.0,
+          "EstimatedRows": 10.0,
           "planner": "COST",
           "PageCacheMisses": 0,
           "Rows": 20,
           "PageCacheHits": 0
         },
         "identifiers": [
-          "c",
+          "score",
           "`c.popularity_score`",
-          "`c.content_id`",
-          "`c.title`"
+          "`c.title`",
+          "c",
+          "`c.content_id`"
         ],
         "db_hits": 0,
         "rows": 20,
@@ -3996,16 +4017,17 @@
               "Details": "cache[c.content_id] AS `c.content_id`, cache[c.title] AS `c.title`",
               "Id": 1,
               "PageCacheMisses": 0,
-              "EstimatedRows": 6.0,
+              "EstimatedRows": 10.0,
               "DbHits": 0,
               "Rows": 20,
               "PageCacheHits": 0
             },
             "identifiers": [
-              "c",
+              "score",
               "`c.popularity_score`",
-              "`c.content_id`",
-              "`c.title`"
+              "`c.title`",
+              "c",
+              "`c.content_id`"
             ],
             "db_hits": 0,
             "rows": 20,
@@ -4017,13 +4039,14 @@
                   "Details": "cache[c.content_id], cache[c.title]",
                   "Id": 2,
                   "PageCacheMisses": 0,
-                  "EstimatedRows": 6.0,
+                  "EstimatedRows": 10.0,
                   "DbHits": 40,
                   "Rows": 20,
                   "PageCacheHits": 0
                 },
                 "identifiers": [
                   "c",
+                  "score",
                   "`c.popularity_score`"
                 ],
                 "db_hits": 40,
@@ -4034,9 +4057,9 @@
                     "arguments": {
                       "Order": "`c.popularity_score` DESC",
                       "Details": "`c.popularity_score` DESC LIMIT 20",
-                      "Memory": 2504,
+                      "Memory": 4352,
                       "Id": 3,
-                      "EstimatedRows": 6.0,
+                      "EstimatedRows": 10.0,
                       "PageCacheMisses": 0,
                       "DbHits": 0,
                       "Rows": 20,
@@ -4044,6 +4067,7 @@
                     },
                     "identifiers": [
                       "c",
+                      "score",
                       "`c.popularity_score`"
                     ],
                     "db_hits": 0,
@@ -4055,35 +4079,36 @@
                           "Details": "c.popularity_score AS `c.popularity_score`",
                           "Id": 4,
                           "PageCacheMisses": 0,
-                          "EstimatedRows": 6.0,
-                          "DbHits": 45,
-                          "Rows": 45,
+                          "EstimatedRows": 10.0,
+                          "DbHits": 66,
+                          "Rows": 66,
                           "PageCacheHits": 0
                         },
                         "identifiers": [
                           "c",
+                          "score",
                           "`c.popularity_score`"
                         ],
-                        "db_hits": 45,
-                        "rows": 45,
+                        "db_hits": 66,
+                        "rows": 66,
                         "children": [
                           {
-                            "operator_type": "NodeIndexContainsScan@neo4j",
+                            "operator_type": "ProcedureCall@neo4j",
                             "arguments": {
-                              "Details": "TEXT INDEX c:Content(title) WHERE title CONTAINS $term",
+                              "Details": "db.index.fulltext.queryNodes($autostring_0, $term) :: (c :: NODE, score :: FLOAT)",
+                              "Memory": 0,
                               "Id": 5,
-                              "UsedIndexes": "index_dfa45a5c: 1",
+                              "EstimatedRows": 10.0,
                               "PageCacheMisses": 0,
-                              "EstimatedRows": 6.0,
-                              "DbHits": 46,
-                              "Rows": 45,
+                              "Rows": 66,
                               "PageCacheHits": 0
                             },
                             "identifiers": [
-                              "c"
+                              "c",
+                              "score"
                             ],
-                            "db_hits": 46,
-                            "rows": 45,
+                            "db_hits": 0,
+                            "rows": 0,
                             "children": []
                           }
                         ]
@@ -4099,9 +4124,9 @@
     },
     "summary": {
       "postgres": {
-        "planning_time_ms": 0.567,
-        "execution_time_ms": 0.822,
-        "total_cost": 223.07,
+        "planning_time_ms": 0.578,
+        "execution_time_ms": 1.247,
+        "total_cost": 222.87,
         "actual_rows": 20,
         "scan_types": [
           {
@@ -4131,7 +4156,7 @@
         "scan_type": "TEXT_MATCH"
       },
       "neo4j": {
-        "total_db_hits": 131,
+        "total_db_hits": 106,
         "result_rows": 20,
         "operators": [
           "ProduceResults@neo4j",
@@ -4139,7 +4164,7 @@
           "CacheProperties@neo4j",
           "Top@neo4j",
           "Projection@neo4j",
-          "NodeIndexContainsScan@neo4j"
+          "ProcedureCall@neo4j"
         ]
       }
     }
@@ -4153,15 +4178,15 @@
             "Node Type": "Limit",
             "Parallel Aware": false,
             "Async Capable": false,
-            "Startup Cost": 229.93,
-            "Total Cost": 229.98,
+            "Startup Cost": 233.93,
+            "Total Cost": 233.98,
             "Plan Rows": 22,
             "Plan Width": 63,
-            "Actual Startup Time": 0.108,
-            "Actual Total Time": 0.11,
-            "Actual Rows": 23,
+            "Actual Startup Time": 0.081,
+            "Actual Total Time": 0.084,
+            "Actual Rows": 12,
             "Actual Loops": 1,
-            "Shared Hit Blocks": 117,
+            "Shared Hit Blocks": 61,
             "Shared Read Blocks": 0,
             "Shared Dirtied Blocks": 0,
             "Shared Written Blocks": 0,
@@ -4177,21 +4202,21 @@
                 "Parent Relationship": "Outer",
                 "Parallel Aware": false,
                 "Async Capable": false,
-                "Startup Cost": 229.93,
-                "Total Cost": 229.98,
+                "Startup Cost": 233.93,
+                "Total Cost": 233.98,
                 "Plan Rows": 22,
                 "Plan Width": 63,
-                "Actual Startup Time": 0.107,
-                "Actual Total Time": 0.108,
-                "Actual Rows": 23,
+                "Actual Startup Time": 0.081,
+                "Actual Total Time": 0.082,
+                "Actual Rows": 12,
                 "Actual Loops": 1,
                 "Sort Key": [
                   "wh.started_at DESC"
                 ],
                 "Sort Method": "quicksort",
-                "Sort Space Used": 28,
+                "Sort Space Used": 26,
                 "Sort Space Type": "Memory",
-                "Shared Hit Blocks": 117,
+                "Shared Hit Blocks": 61,
                 "Shared Read Blocks": 0,
                 "Shared Dirtied Blocks": 0,
                 "Shared Written Blocks": 0,
@@ -4209,15 +4234,15 @@
                     "Async Capable": false,
                     "Join Type": "Inner",
                     "Startup Cost": 4.88,
-                    "Total Cost": 229.44,
+                    "Total Cost": 233.44,
                     "Plan Rows": 22,
                     "Plan Width": 63,
-                    "Actual Startup Time": 0.018,
-                    "Actual Total Time": 0.092,
-                    "Actual Rows": 23,
+                    "Actual Startup Time": 0.017,
+                    "Actual Total Time": 0.064,
+                    "Actual Rows": 12,
                     "Actual Loops": 1,
                     "Inner Unique": true,
-                    "Shared Hit Blocks": 114,
+                    "Shared Hit Blocks": 58,
                     "Shared Read Blocks": 0,
                     "Shared Dirtied Blocks": 0,
                     "Shared Written Blocks": 0,
@@ -4239,15 +4264,15 @@
                         "Total Cost": 86.83,
                         "Plan Rows": 22,
                         "Plan Width": 31,
-                        "Actual Startup Time": 0.012,
-                        "Actual Total Time": 0.034,
-                        "Actual Rows": 23,
+                        "Actual Startup Time": 0.011,
+                        "Actual Total Time": 0.023,
+                        "Actual Rows": 12,
                         "Actual Loops": 1,
-                        "Recheck Cond": "(profile_id = '7412'::smallint)",
+                        "Recheck Cond": "(profile_id = '12925'::smallint)",
                         "Rows Removed by Index Recheck": 0,
-                        "Exact Heap Blocks": 23,
+                        "Exact Heap Blocks": 12,
                         "Lossy Heap Blocks": 0,
-                        "Shared Hit Blocks": 26,
+                        "Shared Hit Blocks": 15,
                         "Shared Read Blocks": 0,
                         "Shared Dirtied Blocks": 0,
                         "Shared Written Blocks": 0,
@@ -4268,11 +4293,11 @@
                             "Total Cost": 4.59,
                             "Plan Rows": 22,
                             "Plan Width": 0,
-                            "Actual Startup Time": 0.007,
-                            "Actual Total Time": 0.007,
-                            "Actual Rows": 23,
+                            "Actual Startup Time": 0.006,
+                            "Actual Total Time": 0.006,
+                            "Actual Rows": 12,
                             "Actual Loops": 1,
-                            "Index Cond": "(profile_id = '7412'::smallint)",
+                            "Index Cond": "(profile_id = '12925'::smallint)",
                             "Shared Hit Blocks": 3,
                             "Shared Read Blocks": 0,
                             "Shared Dirtied Blocks": 0,
@@ -4296,16 +4321,16 @@
                         "Relation Name": "content",
                         "Alias": "c",
                         "Startup Cost": 0.28,
-                        "Total Cost": 6.48,
+                        "Total Cost": 6.66,
                         "Plan Rows": 1,
                         "Plan Width": 48,
                         "Actual Startup Time": 0.002,
                         "Actual Total Time": 0.002,
                         "Actual Rows": 1,
-                        "Actual Loops": 23,
+                        "Actual Loops": 12,
                         "Index Cond": "(content_id = wh.content_id)",
                         "Rows Removed by Index Recheck": 0,
-                        "Shared Hit Blocks": 79,
+                        "Shared Hit Blocks": 40,
                         "Shared Read Blocks": 0,
                         "Shared Dirtied Blocks": 0,
                         "Shared Written Blocks": 0,
@@ -4334,16 +4359,16 @@
             "Temp Read Blocks": 0,
             "Temp Written Blocks": 0
           },
-          "Planning Time": 0.164,
+          "Planning Time": 0.191,
           "Triggers": [],
-          "Execution Time": 0.123
+          "Execution Time": 0.1
         }
       ],
       "mysql": {
         "query_block": {
           "select_id": 1,
           "cost_info": {
-            "query_cost": "16.10"
+            "query_cost": "8.40"
           },
           "ordering_operation": {
             "using_filesort": false,
@@ -4364,14 +4389,14 @@
                   "ref": [
                     "const"
                   ],
-                  "rows_examined_per_scan": 23,
-                  "rows_produced_per_join": 23,
+                  "rows_examined_per_scan": 12,
+                  "rows_produced_per_join": 12,
                   "filtered": "100.00",
                   "cost_info": {
-                    "read_cost": "5.75",
-                    "eval_cost": "2.30",
-                    "prefix_cost": "8.05",
-                    "data_read_per_join": "1K"
+                    "read_cost": "3.00",
+                    "eval_cost": "1.20",
+                    "prefix_cost": "4.20",
+                    "data_read_per_join": "576"
                   },
                   "used_columns": [
                     "watch_id",
@@ -4399,13 +4424,13 @@
                     "vod.wh.content_id"
                   ],
                   "rows_examined_per_scan": 1,
-                  "rows_produced_per_join": 23,
+                  "rows_produced_per_join": 12,
                   "filtered": "100.00",
                   "cost_info": {
-                    "read_cost": "5.75",
-                    "eval_cost": "2.30",
-                    "prefix_cost": "16.10",
-                    "data_read_per_join": "174K"
+                    "read_cost": "3.00",
+                    "eval_cost": "1.20",
+                    "prefix_cost": "8.40",
+                    "data_read_per_join": "91K"
                   },
                   "used_columns": [
                     "content_id",
@@ -4427,7 +4452,7 @@
                 "namespace": "vod.watch_history",
                 "parsedQuery": {
                   "profile_id": {
-                    "$eq": 7412
+                    "$eq": 12925
                   }
                 },
                 "indexFilterSet": false,
@@ -4464,7 +4489,7 @@
                       "direction": "forward",
                       "indexBounds": {
                         "profile_id": [
-                          "[7412, 7412]"
+                          "[12925, 12925]"
                         ],
                         "started_at": [
                           "[MaxKey, MinKey]"
@@ -4477,17 +4502,17 @@
               },
               "executionStats": {
                 "executionSuccess": true,
-                "nReturned": 23,
+                "nReturned": 12,
                 "executionTimeMillis": 1,
-                "totalKeysExamined": 23,
-                "totalDocsExamined": 23,
+                "totalKeysExamined": 12,
+                "totalDocsExamined": 12,
                 "executionStages": {
                   "isCached": false,
                   "stage": "LIMIT",
-                  "nReturned": 23,
+                  "nReturned": 12,
                   "executionTimeMillisEstimate": 0,
-                  "works": 24,
-                  "advanced": 23,
+                  "works": 13,
+                  "advanced": 12,
                   "needTime": 0,
                   "needYield": 0,
                   "saveState": 1,
@@ -4496,23 +4521,23 @@
                   "limitAmount": 50,
                   "inputStage": {
                     "stage": "FETCH",
-                    "nReturned": 23,
+                    "nReturned": 12,
                     "executionTimeMillisEstimate": 0,
-                    "works": 24,
-                    "advanced": 23,
+                    "works": 13,
+                    "advanced": 12,
                     "needTime": 0,
                     "needYield": 0,
                     "saveState": 1,
                     "restoreState": 1,
                     "isEOF": 1,
-                    "docsExamined": 23,
+                    "docsExamined": 12,
                     "alreadyHasObj": 0,
                     "inputStage": {
                       "stage": "IXSCAN",
-                      "nReturned": 23,
+                      "nReturned": 12,
                       "executionTimeMillisEstimate": 0,
-                      "works": 24,
-                      "advanced": 23,
+                      "works": 13,
+                      "advanced": 12,
                       "needTime": 0,
                       "needYield": 0,
                       "saveState": 1,
@@ -4535,13 +4560,13 @@
                       "direction": "forward",
                       "indexBounds": {
                         "profile_id": [
-                          "[7412, 7412]"
+                          "[12925, 12925]"
                         ],
                         "started_at": [
                           "[MaxKey, MinKey]"
                         ]
                       },
-                      "keysExamined": 23,
+                      "keysExamined": 12,
                       "seeks": 1,
                       "dupsTested": 0,
                       "dupsDropped": 0
@@ -4550,7 +4575,7 @@
                 }
               }
             },
-            "nReturned": 23,
+            "nReturned": 12,
             "executionTimeMillisEstimate": 0
           },
           {
@@ -4563,19 +4588,19 @@
                 "preserveNullAndEmptyArrays": false
               }
             },
-            "totalDocsExamined": 23,
-            "totalKeysExamined": 23,
+            "totalDocsExamined": 12,
+            "totalKeysExamined": 12,
             "collectionScans": 0,
             "indexesUsed": [
               "_id_"
             ],
-            "nReturned": 23,
+            "nReturned": 12,
             "executionTimeMillisEstimate": 1
           }
         ],
         "queryShapeHash": "6F148B14B5CE0200DAD1D45E033D56BCE0A77676575202C495F443DAFF5DAF72",
         "serverInfo": {
-          "host": "44e4b6837b01",
+          "host": "a213d2e487c8",
           "port": 27017,
           "version": "8.0.20",
           "gitVersion": "28927c60881a488fcbc5fd4d925b410f33258827"
@@ -4597,7 +4622,7 @@
           "pipeline": [
             {
               "$match": {
-                "profile_id": 7412
+                "profile_id": 12925
               }
             },
             {
@@ -4629,10 +4654,10 @@
         "operator_type": "ProduceResults@neo4j",
         "arguments": {
           "Order": "`w.started_at` DESC",
-          "GlobalMemory": 4752,
+          "GlobalMemory": 2640,
           "planner-impl": "IDP",
           "Memory": 0,
-          "string-representation": "Cypher 25\n\nPlanner COST\n\nRuntime SLOTTED\n\nRuntime version 2026.02\n\n+----------------------+----+-------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+---------------------+------------------------+\n| Operator             | Id | Details                                                                       | Estimated Rows | Rows | DB Hits | Memory (Bytes) | Page Cache Hits/Misses | Ordered by          | Indexes Used           |\n+----------------------+----+-------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+---------------------+------------------------+\n| +ProduceResults      |  0 | `c.title`, `c.type`, `w.started_at`, `w.progress_percent`, `w.completed`      |             22 |   23 |       0 |              0 |                    0/0 |                     |                        |\n| |                    +----+-------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+                     +------------------------+\n| +Projection          |  1 | cache[c.type] AS `c.type`, cache[w.progress_percent] AS `w.progress_percent`, |             22 |   23 |       0 |                |                    0/0 |                     |                        |\n| |                    |    | cache[w.completed] AS `w.completed`, cache[c.title] AS `c.title`              |                |      |         |                |                        |                     |                        |\n| |                    +----+-------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+                     +------------------------+\n| +CacheProperties     |  2 | cache[w.progress_percent], cache[w.completed], cache[c.type], cache[c.title]  |             22 |   23 |      92 |                |                    0/0 |                     |                        |\n| |                    +----+-------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+                     +------------------------+\n| +Top                 |  3 | `w.started_at` DESC LIMIT 50                                                  |             22 |   23 |       0 |           4688 |                    0/0 | `w.started_at` DESC |                        |\n| |                    +----+-------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+---------------------+------------------------+\n| +Projection          |  4 | w.started_at AS `w.started_at`                                                |             22 |   23 |      23 |                |                    0/0 |                     |                        |\n| |                    +----+-------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+---------------------+------------------------+\n| +Filter              |  5 | c:Content                                                                     |             22 |   23 |      23 |                |                    0/0 |                     |                        |\n| |                    +----+-------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+---------------------+------------------------+\n| +Expand(All)         |  6 | (p)-[w:WATCHED]->(c)                                                          |             22 |   23 |      37 |                |                    0/0 |                     |                        |\n| |                    +----+-------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+---------------------+------------------------+\n| +NodeUniqueIndexSeek |  7 | UNIQUE p:Profile(profile_id) WHERE profile_id = $pid                          |              1 |    1 |       2 |                |                    0/0 |                     | constraint_129c2d85: 1 |\n+----------------------+----+-------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+---------------------+------------------------+\n\nTotal database accesses: 177, total allocated memory: 4752\n",
+          "string-representation": "Cypher 25\n\nPlanner COST\n\nRuntime SLOTTED\n\nRuntime version 2026.02\n\n+----------------------+----+-------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+---------------------+------------------------+\n| Operator             | Id | Details                                                                       | Estimated Rows | Rows | DB Hits | Memory (Bytes) | Page Cache Hits/Misses | Ordered by          | Indexes Used           |\n+----------------------+----+-------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+---------------------+------------------------+\n| +ProduceResults      |  0 | `c.title`, `c.type`, `w.started_at`, `w.progress_percent`, `w.completed`      |             22 |   12 |       0 |              0 |                    0/0 |                     |                        |\n| |                    +----+-------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+                     +------------------------+\n| +Projection          |  1 | cache[c.type] AS `c.type`, cache[w.progress_percent] AS `w.progress_percent`, |             22 |   12 |       0 |                |                    0/0 |                     |                        |\n| |                    |    | cache[w.completed] AS `w.completed`, cache[c.title] AS `c.title`              |                |      |         |                |                        |                     |                        |\n| |                    +----+-------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+                     +------------------------+\n| +CacheProperties     |  2 | cache[w.progress_percent], cache[w.completed], cache[c.type], cache[c.title]  |             22 |   12 |      48 |                |                    0/0 |                     |                        |\n| |                    +----+-------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+                     +------------------------+\n| +Top                 |  3 | `w.started_at` DESC LIMIT 50                                                  |             22 |   12 |       0 |           2576 |                    0/0 | `w.started_at` DESC |                        |\n| |                    +----+-------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+---------------------+------------------------+\n| +Projection          |  4 | w.started_at AS `w.started_at`                                                |             22 |   12 |      12 |                |                    0/0 |                     |                        |\n| |                    +----+-------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+---------------------+------------------------+\n| +Filter              |  5 | c:Content                                                                     |             22 |   12 |      12 |                |                    0/0 |                     |                        |\n| |                    +----+-------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+---------------------+------------------------+\n| +Expand(All)         |  6 | (p)-[w:WATCHED]->(c)                                                          |             22 |   12 |      24 |                |                    0/0 |                     |                        |\n| |                    +----+-------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+---------------------+------------------------+\n| +NodeUniqueIndexSeek |  7 | UNIQUE p:Profile(profile_id) WHERE profile_id = $pid                          |              1 |    1 |       2 |                |                    0/0 |                     | constraint_129c2d85: 1 |\n+----------------------+----+-------------------------------------------------------------------------------+----------------+------+---------+----------------+------------------------+---------------------+------------------------+\n\nTotal database accesses: 98, total allocated memory: 2640\n",
           "runtime": "SLOTTED",
           "runtime-impl": "SLOTTED",
           "version": "25",
@@ -4644,7 +4669,7 @@
           "EstimatedRows": 21.762785636561482,
           "planner": "COST",
           "PageCacheMisses": 0,
-          "Rows": 23,
+          "Rows": 12,
           "PageCacheHits": 0
         },
         "identifiers": [
@@ -4658,7 +4683,7 @@
           "`w.progress_percent`"
         ],
         "db_hits": 0,
-        "rows": 23,
+        "rows": 12,
         "children": [
           {
             "operator_type": "Projection@neo4j",
@@ -4669,7 +4694,7 @@
               "PageCacheMisses": 0,
               "EstimatedRows": 21.762785636561482,
               "DbHits": 0,
-              "Rows": 23,
+              "Rows": 12,
               "PageCacheHits": 0
             },
             "identifiers": [
@@ -4683,7 +4708,7 @@
               "`w.progress_percent`"
             ],
             "db_hits": 0,
-            "rows": 23,
+            "rows": 12,
             "children": [
               {
                 "operator_type": "CacheProperties@neo4j",
@@ -4693,8 +4718,8 @@
                   "Id": 2,
                   "PageCacheMisses": 0,
                   "EstimatedRows": 21.762785636561482,
-                  "DbHits": 92,
-                  "Rows": 23,
+                  "DbHits": 48,
+                  "Rows": 12,
                   "PageCacheHits": 0
                 },
                 "identifiers": [
@@ -4703,20 +4728,20 @@
                   "c",
                   "`w.started_at`"
                 ],
-                "db_hits": 92,
-                "rows": 23,
+                "db_hits": 48,
+                "rows": 12,
                 "children": [
                   {
                     "operator_type": "Top@neo4j",
                     "arguments": {
                       "Order": "`w.started_at` DESC",
                       "Details": "`w.started_at` DESC LIMIT 50",
-                      "Memory": 4688,
+                      "Memory": 2576,
                       "Id": 3,
                       "EstimatedRows": 21.762785636561482,
                       "PageCacheMisses": 0,
                       "DbHits": 0,
-                      "Rows": 23,
+                      "Rows": 12,
                       "PageCacheHits": 0
                     },
                     "identifiers": [
@@ -4726,7 +4751,7 @@
                       "`w.started_at`"
                     ],
                     "db_hits": 0,
-                    "rows": 23,
+                    "rows": 12,
                     "children": [
                       {
                         "operator_type": "Projection@neo4j",
@@ -4735,8 +4760,8 @@
                           "Id": 4,
                           "PageCacheMisses": 0,
                           "EstimatedRows": 21.762785636561482,
-                          "DbHits": 23,
-                          "Rows": 23,
+                          "DbHits": 12,
+                          "Rows": 12,
                           "PageCacheHits": 0
                         },
                         "identifiers": [
@@ -4745,8 +4770,8 @@
                           "c",
                           "`w.started_at`"
                         ],
-                        "db_hits": 23,
-                        "rows": 23,
+                        "db_hits": 12,
+                        "rows": 12,
                         "children": [
                           {
                             "operator_type": "Filter@neo4j",
@@ -4755,8 +4780,8 @@
                               "Id": 5,
                               "PageCacheMisses": 0,
                               "EstimatedRows": 21.762785636561482,
-                              "DbHits": 23,
-                              "Rows": 23,
+                              "DbHits": 12,
+                              "Rows": 12,
                               "PageCacheHits": 0
                             },
                             "identifiers": [
@@ -4764,8 +4789,8 @@
                               "w",
                               "c"
                             ],
-                            "db_hits": 23,
-                            "rows": 23,
+                            "db_hits": 12,
+                            "rows": 12,
                             "children": [
                               {
                                 "operator_type": "Expand(All)@neo4j",
@@ -4774,8 +4799,8 @@
                                   "Id": 6,
                                   "PageCacheMisses": 0,
                                   "EstimatedRows": 21.762785636561482,
-                                  "DbHits": 37,
-                                  "Rows": 23,
+                                  "DbHits": 24,
+                                  "Rows": 12,
                                   "PageCacheHits": 0
                                 },
                                 "identifiers": [
@@ -4783,8 +4808,8 @@
                                   "w",
                                   "c"
                                 ],
-                                "db_hits": 37,
-                                "rows": 23,
+                                "db_hits": 24,
+                                "rows": 12,
                                 "children": [
                                   {
                                     "operator_type": "NodeUniqueIndexSeek@neo4j",
@@ -4822,22 +4847,22 @@
     },
     "summary": {
       "postgres": {
-        "planning_time_ms": 0.164,
-        "execution_time_ms": 0.123,
-        "total_cost": 229.98,
-        "actual_rows": 23,
+        "planning_time_ms": 0.191,
+        "execution_time_ms": 0.1,
+        "total_cost": 233.98,
+        "actual_rows": 12,
         "scan_types": [
           {
             "type": "Bitmap Heap Scan",
             "relation": "watch_history",
             "index": null,
-            "rows": 23
+            "rows": 12
           },
           {
             "type": "Bitmap Index Scan",
             "relation": "",
             "index": "idx_wh_profile_started",
-            "rows": 23
+            "rows": 12
           },
           {
             "type": "Index Scan",
@@ -4853,7 +4878,7 @@
             "table_name": "wh",
             "access_type": "ref",
             "key": "idx_wh_profile_started",
-            "rows_examined": 23,
+            "rows_examined": 12,
             "filtered": "100.00"
           },
           {
@@ -4866,15 +4891,15 @@
         ]
       },
       "mongo": {
-        "n_returned": 23,
-        "total_docs_examined": 23,
-        "total_keys_examined": 23,
+        "n_returned": 12,
+        "total_docs_examined": 12,
+        "total_keys_examined": 12,
         "execution_time_ms": 1,
         "scan_type": "IXSCAN"
       },
       "neo4j": {
-        "total_db_hits": 177,
-        "result_rows": 23,
+        "total_db_hits": 98,
+        "result_rows": 12,
         "operators": [
           "ProduceResults@neo4j",
           "Projection@neo4j",
@@ -4901,8 +4926,8 @@
             "Total Cost": 112.36,
             "Plan Rows": 10,
             "Plan Width": 72,
-            "Actual Startup Time": 0.054,
-            "Actual Total Time": 0.055,
+            "Actual Startup Time": 0.075,
+            "Actual Total Time": 0.076,
             "Actual Rows": 6,
             "Actual Loops": 1,
             "Sort Key": [
@@ -4911,7 +4936,7 @@
             "Sort Method": "quicksort",
             "Sort Space Used": 25,
             "Sort Space Type": "Memory",
-            "Shared Hit Blocks": 33,
+            "Shared Hit Blocks": 34,
             "Shared Read Blocks": 0,
             "Shared Dirtied Blocks": 0,
             "Shared Written Blocks": 0,
@@ -4932,12 +4957,12 @@
                 "Total Cost": 112.17,
                 "Plan Rows": 10,
                 "Plan Width": 72,
-                "Actual Startup Time": 0.017,
-                "Actual Total Time": 0.047,
+                "Actual Startup Time": 0.028,
+                "Actual Total Time": 0.063,
                 "Actual Rows": 6,
                 "Actual Loops": 1,
                 "Inner Unique": true,
-                "Shared Hit Blocks": 30,
+                "Shared Hit Blocks": 31,
                 "Shared Read Blocks": 0,
                 "Shared Dirtied Blocks": 0,
                 "Shared Written Blocks": 0,
@@ -4959,11 +4984,11 @@
                     "Total Cost": 37.17,
                     "Plan Rows": 10,
                     "Plan Width": 28,
-                    "Actual Startup Time": 0.012,
-                    "Actual Total Time": 0.026,
+                    "Actual Startup Time": 0.019,
+                    "Actual Total Time": 0.034,
                     "Actual Rows": 6,
                     "Actual Loops": 1,
-                    "Recheck Cond": "(person_id = '571'::smallint)",
+                    "Recheck Cond": "(person_id = '792'::smallint)",
                     "Rows Removed by Index Recheck": 0,
                     "Exact Heap Blocks": 6,
                     "Lossy Heap Blocks": 0,
@@ -4988,11 +5013,11 @@
                         "Total Cost": 4.36,
                         "Plan Rows": 10,
                         "Plan Width": 0,
-                        "Actual Startup Time": 0.008,
-                        "Actual Total Time": 0.009,
+                        "Actual Startup Time": 0.012,
+                        "Actual Total Time": 0.013,
                         "Actual Rows": 6,
                         "Actual Loops": 1,
-                        "Index Cond": "(person_id = '571'::smallint)",
+                        "Index Cond": "(person_id = '792'::smallint)",
                         "Shared Hit Blocks": 2,
                         "Shared Read Blocks": 0,
                         "Shared Dirtied Blocks": 0,
@@ -5052,9 +5077,9 @@
             "Temp Read Blocks": 0,
             "Temp Written Blocks": 0
           },
-          "Planning Time": 0.258,
+          "Planning Time": 0.319,
           "Triggers": [],
-          "Execution Time": 0.069
+          "Execution Time": 0.093
         }
       ],
       "mysql": {
@@ -5145,7 +5170,7 @@
           "namespace": "vod.content",
           "parsedQuery": {
             "cast.person_id": {
-              "$eq": 571
+              "$eq": 792
             }
           },
           "indexFilterSet": false,
@@ -5177,7 +5202,7 @@
                 "stage": "COLLSCAN",
                 "filter": {
                   "cast.person_id": {
-                    "$eq": 571
+                    "$eq": 792
                   }
                 },
                 "direction": "forward"
@@ -5189,7 +5214,7 @@
         "executionStats": {
           "executionSuccess": true,
           "nReturned": 6,
-          "executionTimeMillis": 2,
+          "executionTimeMillis": 4,
           "totalKeysExamined": 0,
           "totalDocsExamined": 2000,
           "executionStages": {
@@ -5209,7 +5234,7 @@
             },
             "memLimit": 104857600,
             "type": "simple",
-            "totalDataSizeSorted": 1713,
+            "totalDataSizeSorted": 1644,
             "usedDisk": false,
             "spills": 0,
             "spilledDataStorageSize": 0,
@@ -5234,7 +5259,7 @@
                 "stage": "COLLSCAN",
                 "filter": {
                   "cast.person_id": {
-                    "$eq": 571
+                    "$eq": 792
                   }
                 },
                 "nReturned": 6,
@@ -5257,7 +5282,7 @@
         "command": {
           "find": "content",
           "filter": {
-            "cast.person_id": 571
+            "cast.person_id": 792
           },
           "sort": {
             "release_date": -1
@@ -5271,7 +5296,7 @@
           "$db": "vod"
         },
         "serverInfo": {
-          "host": "44e4b6837b01",
+          "host": "a213d2e487c8",
           "port": 27017,
           "version": "8.0.20",
           "gitVersion": "28927c60881a488fcbc5fd4d925b410f33258827"
@@ -5490,8 +5515,8 @@
     },
     "summary": {
       "postgres": {
-        "planning_time_ms": 0.258,
-        "execution_time_ms": 0.069,
+        "planning_time_ms": 0.319,
+        "execution_time_ms": 0.093,
         "total_cost": 112.36,
         "actual_rows": 6,
         "scan_types": [
@@ -5537,7 +5562,7 @@
         "n_returned": 6,
         "total_docs_examined": 2000,
         "total_keys_examined": 0,
-        "execution_time_ms": 2,
+        "execution_time_ms": 4,
         "scan_type": "COLLSCAN"
       },
       "neo4j": {

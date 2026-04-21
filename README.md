@@ -199,17 +199,17 @@ Przed kazdym scenariuszem `_flush_caches()` czysci cache na poziomie silnika, ze
 | ID | Nazwa | Co robi |
 |----|-------|---------|
 | **I1** | Rejestracja uzytkownika | Wstawienie danych do 3 tabel: users + profiles + subscriptions |
-| **I2** | Bulk import ratings | Masowe wstawienie N rekordow ocen do tabeli ratings (10K/100K/500K zalezenie od wolumenu) |
+| **I2** | Bulk import ratings | Masowe wstawienie N rekordow ocen do tabeli/kolekcji `ratings` (10K/100K/500K zaleznie od wolumenu). Tabela ma unique constraint (profile_id, content_id) — scenariusz sprawdza jak kazdy silnik radzi sobie z bulk importem do tabeli z ograniczeniem unikalnosci |
 | **I3** | Dodanie serialu z pelnym drzewem | Wstawienie content + 3 sezony x 10 odcinkow + 10 aktorow |
 | **I4** | Batch insert platnosci | Masowe wstawienie N rekordow do payments (1K–50K) |
 | **I5** | Oceny z przeliczeniem avg_rating | Masowe wstawienie ocen + przeliczenie sredniej oceny na content |
 | **I6** | Import osob z powiazaniami | Masowe wstawienie osob (people) + przypisanie ich do tresci (content_people) |
 
 **Jak rozni sie implementacja miedzy bazami (INSERT):**
-- **PG** — masowe operacje przez `COPY FROM STDIN` (natywny bulk-load PostgreSQL, najszybszy sposob), pojedyncze przez zwykle INSERT z `RETURNING user_id` zeby dostac ID nowego rekordu. W I2 batch INSERT z `ON CONFLICT (profile_id, content_id) DO NOTHING` (tabela ratings ma unique constraint na parze profil+tresc)
-- **MySQL** — masowe przez batch INSERT (wstawianie wielu wierszy jednym zapytaniem, po 5 000 naraz), ID nowego rekordu przez `lastrowid`. W I2 uzywa `INSERT IGNORE` zeby pomijac duplikaty (profile_id, content_id)
+- **PG** — masowe operacje przez `COPY FROM STDIN` (natywny bulk-load PostgreSQL, najszybszy sposob), pojedyncze przez zwykle INSERT z `RETURNING user_id` zeby dostac ID nowego rekordu. W I2 uzywamy wzorca staging: `CREATE TEMP TABLE ... ON COMMIT DROP` → `COPY FROM STDIN` → `INSERT ... SELECT ... ON CONFLICT (profile_id, content_id) DO NOTHING`. Dzieki temu PG faktycznie uzywa swojego natywnego bulk-load nawet dla tabeli z unique constraintem, a konflikty (unikalna para profil+tresc) sa rozstrzygane hurtowo jednym INSERT-em na koncu
+- **MySQL** — masowe przez batch INSERT (wstawianie wielu wierszy jednym zapytaniem, po 5 000 naraz), ID nowego rekordu przez `lastrowid`. W I2 uzywa `INSERT IGNORE` zeby pomijac duplikaty (profile_id, content_id) — MySQL nie ma odpowiednika COPY w kontekscie INSERT z ON CONFLICT, wiec batched VALUES to jego natywna droga
 - **MongoDB** — masowe przez `insert_many()` (wrzuca liste dokumentow naraz), w I1 caly user to jeden dokument z zagniezdzonymi profilami i subskrypcja (nie ma osobnych tabel), w I2 wstawia dokumenty do kolekcji `ratings`, w I6 zamiast osobnej tabeli content_people dodajemy aktorow do tablicy `cast` wewnatrz dokumentu content
-- **Neo4j** — masowe przez `UNWIND` (przekazujemy liste danych jako parametr, baza iteruje po niej), tworzy wezly i relacje miedzy nimi. W I2 tworzy relacje `(Profile)-[:RATED]->(Content)` przy uzyciu `CALL IN TRANSACTIONS OF 2000 ROWS` — commituje batchami zwalniajac pamiec transakcji. Jedna sesja jest otwierana poza petla batchowa (nie wewnatrz niej) — eliminuje overhead otwierania nowego polaczenia TCP per batch. W I3 cale drzewo serialu (Content + Season + Episode) powstaje jednym zapytaniem z zagniezdzonym `UNWIND range()`, bez petli Python po sezonach/odcinkach
+- **Neo4j** — masowe przez `UNWIND` (przekazujemy liste danych jako parametr, baza iteruje po niej), tworzy wezly i relacje miedzy nimi. W I2 tworzy relacje `(Profile)-[:RATED]->(Content)` przy uzyciu `CALL IN TRANSACTIONS OF 2000 ROWS` — commituje batchami zwalniajac pamiec transakcji (inherentna cecha silnika grafowego: pojedyncza transakcja nie miesci setek tysiecy relacji w pamieci). Jedna sesja jest otwierana poza petla batchowa (nie wewnatrz niej) — eliminuje overhead otwierania nowego polaczenia TCP per batch. W I3 cale drzewo serialu (Content + Season + Episode) powstaje jednym zapytaniem z zagniezdzonym `UNWIND range()`, bez petli Python po sezonach/odcinkach
 
 ### SELECT (6 scenariuszy)
 
@@ -217,15 +217,15 @@ Przed kazdym scenariuszem `_flush_caches()` czysci cache na poziomie silnika, ze
 |----|-------|---------|
 | **S1** | Strona glowna | Filtrowanie tresci po gatunku "Action", sortowanie po popularnosci, zwrocenie 20 najlepszych + odczyt pola JSON (studio) |
 | **S2** | Collaborative filtering | Znajdz uzytkownikow o podobnych gustach (ogladali to samo), polecaj tresci ktorych nasz user jeszcze nie widzial |
-| **S3** | TOP 100 wg liczby ocen | Policz ile ocen ma kazda tresc, zwroc 100 tresci z najwyzszym licznikiem ocen wraz ze srednia |
+| **S3** | TOP 100 wg liczby ocen w okresie | Policz ile ocen dostala kazda tresc od daty granicznej (2025-06-01), zwroc 100 tresci z najwyzszym licznikiem wraz ze srednia — scenariusz sprawdza indeks zakresowy na `ratings.created_at` |
 | **S4** | Full-text search po tytule | Wyszukiwanie tresci po fragmencie tytulu + odczyt pola JSON (tags) |
 | **S5** | Historia ogladania profilu | 50 ostatnich pozycji z historii ogladania danego profilu, razem z tytulami tresci |
 | **S6** | Filmografia osoby | Wszystkie tresci w ktorych dana osoba brala udzial (jako aktor/rezyser/scenarzysta) |
 
 **Jak rozni sie implementacja miedzy bazami (SELECT):**
-- **PG/MySQL** — klasyczne JOIN-y miedzy tabelami, WHERE do filtrowania, GROUP BY do agregacji. W S1 dostep do pola JSON przez `metadata->>'studio'` (PG) / `metadata->>'$.studio'` (MySQL). W S3 JOIN ratings z content, GROUP BY content, ORDER BY liczba ocen. W S4 wyszukiwanie przez `ILIKE '%term%'` (PG) / `LIKE '%term%'` (MySQL)
-- **MongoDB** — zamiast JOIN-ow uzywa `aggregate` pipeline (lancuch operacji: filtruj → grupuj → sortuj → dolacz dane z innej kolekcji przez `$lookup`). W S3 agregacja po kolekcji `ratings` z `$lookup` do `content`. W S4 wyszukiwanie przez wbudowany text search (`$text`). W S6 wystarczy jedno zapytanie bo aktorzy sa zagniezdeni w dokumencie content
-- **Neo4j** — zapytania Cypher oparte na przechodzeniu po grafie, np. "znajdz profil, przejdz po relacji WATCHED do tresci, przejdz dalej do innych profili ktore tez to ogladaly". Naturalnie modeluje rekomendacje (S2) — graf jest do tego stworzony. W S3 agreguje relacje RATED zamiast WATCHED — ta sama semantyka (aktywnosc uzytkownikow), mniejszy zbior danych
+- **PG/MySQL** — klasyczne JOIN-y miedzy tabelami, WHERE do filtrowania, GROUP BY do agregacji. W S1 dostep do pola JSON przez `metadata->>'studio'` (PG) / `metadata->>'$.studio'` (MySQL). W S3 JOIN ratings z content z filtrem `WHERE r.created_at >= '2025-06-01'` → GROUP BY content → ORDER BY liczba ocen. W S4 wyszukiwanie przez `ILIKE '%term%'` (PG, wspierane przez GIN+pg_trgm) / `MATCH AGAINST` (MySQL FULLTEXT)
+- **MongoDB** — zamiast JOIN-ow uzywa `aggregate` pipeline (lancuch operacji: filtruj → grupuj → sortuj → dolacz dane z innej kolekcji przez `$lookup`). W S3 agregacja po kolekcji `ratings` z `$match` po dacie i `$lookup` do `content`. W S4 wyszukiwanie przez wbudowany text search (`$text`). W S6 wystarczy jedno zapytanie bo aktorzy sa zagniezdeni w dokumencie content
+- **Neo4j** — zapytania Cypher oparte na przechodzeniu po grafie, np. "znajdz profil, przejdz po relacji WATCHED do tresci, przejdz dalej do innych profili ktore tez to ogladaly". Naturalnie modeluje rekomendacje (S2) — graf jest do tego stworzony. W S3 agreguje relacje RATED z filtrem po `rated_at` — ta sama semantyka co PG/MySQL (popularnosc w okresie). W S4 uzywa natywnego FULLTEXT INDEX (`db.index.fulltext.queryNodes('content_title_ft', $term)`) — odpowiednik MySQL FULLTEXT i PG GIN+trigram
 
 ### UPDATE (6 scenariuszy)
 
@@ -239,7 +239,7 @@ Przed kazdym scenariuszem `_flush_caches()` czysci cache na poziomie silnika, ze
 | **U6** | Masowa aktualizacja popularity_score | Przeliczenie wyniku popularnosci dla WSZYSTKICH tresci wg formuly (views x 0.0001 + avg_rating x 5 + liczba_ocen x 0.1) |
 
 **Jak rozni sie implementacja miedzy bazami (UPDATE):**
-- **PG/MySQL** — klasyczny UPDATE z WHERE. W U2 podzapytanie `SET avg_rating = (SELECT AVG(score) FROM ratings WHERE content_id = ...)`. W U6 PostgreSQL uzywa podzapytania z `GROUP BY` polaczonego przez klauzule `FROM` (jeden przebieg po ratings, JOIN z content — unika korelowanego podzapytania per wiersz). MySQL uzywa skorelowanego `SELECT COUNT(*)` per wiersz (brak wsparcia dla FROM subquery w UPDATE)
+- **PG/MySQL** — klasyczny UPDATE z WHERE. W U2 podzapytanie `SET avg_rating = (SELECT AVG(score) FROM ratings WHERE content_id = ...)`. W U6 oba silniki uzywaja jednego przebiegu po `ratings` z `GROUP BY content_id` i JOIN z `content` — PG przez `UPDATE ... FROM (SELECT ... GROUP BY) rc WHERE ...`, MySQL przez `UPDATE ... JOIN (SELECT ... GROUP BY) rc ON ... SET ...`. Obie formy sa semantycznie rowne i dobrze zoptymalizowane przez planer — daje to rzetelne porownanie silnikow, a nie roznic w jakosci zapytania
 - **MongoDB** — `update_one` / `update_many` na dokumentach. W U3 subskrypcja jest zagniezdzona w dokumencie usera, wiec aktualizujemy pole `subscription.plan_name` wewnatrz dokumentu. W U6 trzeba najpierw policzyc oceny osobnym zapytaniem, a potem zrobic masowa aktualizacje
 - **Neo4j** — `MATCH` + `SET` na wezlach/relacjach. W U1 zapytanie uzywa `ORDER BY w.started_at DESC LIMIT 1` zamiast prostego `LIMIT 1`, co gwarantuje deterministyczny wybor relacji WATCHED (zawsze najnowsza). W U2 oblicza srednia z relacji `RATED` i ustawia ja na wezle Content (indeks na `content_id` zapewnia O(1) lookup). W U6 zamiast prostego `OPTIONAL MATCH` po wszystkich wezlach Content, uzywa `CALL { WITH c OPTIONAL MATCH ... RETURN avg(r.score), count(r) }` — subquery izoluje agregacje per wezel, eliminujac problem mnozenia wierszy przy OPTIONAL MATCH z agregacja na calym grafie
 
@@ -249,7 +249,7 @@ Przed kazdym scenariuszem `_flush_caches()` czysci cache na poziomie silnika, ze
 |----|-------|---------|
 | **D1** | Usuniecie tresci z kaskada | Usuniecie tresci razem ze wszystkimi powiazanymi danymi (sezony, odcinki, historia, lista, oceny) |
 | **D2** | Usuniecie profilu z historia | Usuniecie profilu razem z jego historia ogladania, lista i ocenami |
-| **D3** | Czyszczenie starych ocen | Usuniecie wszystkich ocen (ratings) starszych niz zadana data graniczna |
+| **D3** | Czyszczenie starych ocen | Usuniecie wszystkich ocen (ratings) starszych niz zadana data graniczna — kazda baza otrzymuje pelny wolumen testowy (batch_watch_history), zeby czas DELETE byl porownywalny miedzy silnikami |
 | **D4** | Usuniecie z my_list | Usuniecie jednej pozycji z listy "do obejrzenia" |
 | **D5** | Usuniecie subskrypcji z platnosciami | Usuniecie subskrypcji razem z jej platnosciami |
 | **D6** | Masowe usuniecie nieaktywnych userow | Usuniecie wszystkich uzytkownikow ze statusem "deleted" |
@@ -328,7 +328,7 @@ Dane sa ladowane ponownie od zera — TRUNCATE w PostgreSQL/MySQL, drop_collecti
 
 **MongoDB** dostaje 16 indeksow: unikalne na email i parach (profile_id, content_id), single field na polach filtrowanych, text index na title, compound index na (profile_id, started_at).
 
-**Neo4j** dostaje 9 indeksow w loaderze: property indexes (RANGE) na statusach i typach, text indexes na title i metadata. Dodatkowo, na poczatku kazdego pliku scenariuszy umieszczone sa komentarze z zaleceniami dodatkowych indeksow Cypher (np. `FOR (n:User) ON (n.user_id)`, `FOR (n:Profile) ON (n.profile_id)`), ktore eliminuja full graph scan przy MATCH i sa szczegolnie istotne dla zapytan z warunkami na wlasciwosciach wezlow.
+**Neo4j** dostaje 10 indeksow w loaderze: property indexes (RANGE) na statusach i typach, text indexes na title i metadata, oraz osobny FULLTEXT INDEX `content_title_ft` na `Content.title` uzywany przez S4 (`db.index.fulltext.queryNodes`). Constrainty unikalnosci na kluczach glownych (np. `User.user_id IS UNIQUE`) sa tworzone juz na etapie ladowania danych — beda wiec aktywne rowniez w trybie "bez indeksow wydajnosciowych", bo bez nich relacje tworzone przez MATCH w ogole nie dzialaja.
 
 ---
 

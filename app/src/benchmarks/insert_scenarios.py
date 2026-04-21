@@ -88,7 +88,6 @@ class I1_RegisterUser(BaseScenario):
         self._uid = uid
 
     def run_neo4j(self, driver, ctx):
-        # NEO4J OPT: jeden CREATE atomowo tworzy User+Profile+Subscription z relacjami
         uid = ctx.test_id("users")
         with driver.session() as s:
             s.run("""
@@ -161,7 +160,7 @@ class I2_BulkWatchHistory(BaseScenario):
     setup_mongo = setup_postgres
 
     def setup_neo4j(self, driver, ctx):
-        n = min(ctx.params["batch_watch_history"], 200_000)
+        n = ctx.params["batch_watch_history"]
         max_pid = ctx.max_ids["profiles"]
         max_cid = ctx.max_ids["content"]
         self._neo4j_rows = [
@@ -175,18 +174,30 @@ class I2_BulkWatchHistory(BaseScenario):
         ]
 
     def run_postgres(self, conn, ctx):
+        buf = StringIO()
+        for row in self._data:
+            buf.write("\t".join(str(v) for v in row) + "\n")
+        buf.seek(0)
         with conn.cursor() as cur:
-            batch_size = 5000
-            for i in range(0, len(self._data), batch_size):
-                batch = self._data[i:i + batch_size]
-                placeholders = ", ".join(["(%s, %s, %s, %s, %s, %s)"] * len(batch))
-                flat = [v for row in batch for v in row]
-                cur.execute(
-                    "INSERT INTO ratings (profile_id, content_id, score, "
-                    "review_text, created_at, updated_at) "
-                    f"VALUES {placeholders} ON CONFLICT (profile_id, content_id) DO NOTHING",
-                    flat,
-                )
+            cur.execute(
+                "CREATE TEMP TABLE _stage_ratings ("
+                "profile_id BIGINT, content_id BIGINT, score INT, "
+                "review_text TEXT, created_at TIMESTAMP, updated_at TIMESTAMP"
+                ") ON COMMIT DROP"
+            )
+            with cur.copy(
+                "COPY _stage_ratings (profile_id, content_id, score, "
+                "review_text, created_at, updated_at) FROM STDIN"
+            ) as copy:
+                for line in buf:
+                    copy.write(line)
+            cur.execute(
+                "INSERT INTO ratings (profile_id, content_id, score, "
+                "review_text, created_at, updated_at) "
+                "SELECT profile_id, content_id, score, "
+                "review_text, created_at, updated_at FROM _stage_ratings "
+                "ON CONFLICT (profile_id, content_id) DO NOTHING"
+            )
         conn.commit()
 
     def run_mysql(self, conn, ctx):
@@ -225,7 +236,6 @@ class I2_BulkWatchHistory(BaseScenario):
                 pass
 
     def run_neo4j(self, driver, ctx):
-        # NEO4J OPT: CALL IN TRANSACTIONS OF 2000 ROWS commituje porcjami zwalniając pamięć
         rows = self._neo4j_rows
         with driver.session() as s:
             for j in range(0, len(rows), 25_000):
@@ -402,8 +412,6 @@ class I3_AddSeriesWithTree(BaseScenario):
         self._cid = cid
 
     def run_neo4j(self, driver, ctx):
-        # NEO4J OPT: jedna sesja dla całego drzewa; UNWIND range() zamiast pętli Python po epizodach;
-        # indeksy na Person.person_id i Content.content_id przyspieszają MATCH przy linkach aktorów
         cid = ctx.test_id("content")
         metadata = '{"studio":"Test","budget":1000000,"awards":[],"tags":["test"]}'
         with driver.session() as s:
@@ -528,7 +536,6 @@ class I4_BatchPayments(BaseScenario):
             db.payments.insert_many(docs[j:j + 5000], ordered=False)
 
     def run_neo4j(self, driver, ctx):
-        # NEO4J OPT: sesja otwierana raz poza pętlą batchową; indeks na Subscription.subscription_id
         rows = [
             {
                 "payment_id": self._start_id + i,
@@ -657,8 +664,6 @@ class I5_RatingsWithAvgUpdate(BaseScenario):
         db.content.update_one({"_id": self._cid}, {"$set": {"avg_rating": avg}})
 
     def run_neo4j(self, driver, ctx):
-        # NEO4J OPT: sesja otwierana raz dla wszystkich batchów i końcowego avg update;
-        # indeksy na Profile.profile_id i Content.content_id przyspieszają MATCH w UNWIND
         rows = [
             {"profile_id": d[0], "content_id": d[1], "score": d[2]}
             for d in self._data
@@ -793,8 +798,6 @@ class I6_ImportPeopleWithRelations(BaseScenario):
             db.content.bulk_write(ops, ordered=False)
 
     def run_neo4j(self, driver, ctx):
-        # NEO4J OPT: sesja otwierana raz poza oboma pętlami batchowymi (Person i relacje);
-        # indeksy na Person.person_id i Content.content_id przyspieszają MATCH przy tworzeniu relacji
         with driver.session() as s:
             rows = [
                 {"person_id": p[0], "first_name": p[1], "last_name": p[2],

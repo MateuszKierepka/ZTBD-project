@@ -110,6 +110,7 @@ class BenchmarkRunner:
         scenario_ids: list[str] | None = None,
     ) -> list[dict]:
         results = []
+        self.ctx.with_indexes = with_indexes
         scenarios = ALL_SCENARIOS
         if scenario_ids:
             scenarios = [s for s in scenarios if s.id in scenario_ids]

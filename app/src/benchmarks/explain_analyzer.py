@@ -58,7 +58,7 @@ class ExplainAnalyzer:
             for db_name in ("postgres", "mysql", "mongo", "neo4j"):
                 print(f"    {db_name}...", end=" ")
                 try:
-                    plan = self._run_explain(db_name, sid, ctx)
+                    plan = self._run_explain(db_name, sid, ctx, with_indexes)
                     summary = self._extract_summary(db_name, plan)
                     all_plans[sid]["plans"][db_name] = plan
                     all_plans[sid]["summary"][db_name] = summary
@@ -93,7 +93,9 @@ class ExplainAnalyzer:
         ctx["search_term"] = "Interface"
         return ctx
 
-    def _run_explain(self, db_name: str, sid: str, ctx: dict):
+    def _run_explain(self, db_name: str, sid: str, ctx: dict, with_indexes: bool):
+        if db_name == "neo4j":
+            return self._explain_neo4j(sid, ctx, with_indexes)
         return getattr(self, f"_explain_{db_name}")(sid, ctx)
 
     def _explain_postgres(self, sid: str, ctx: dict):
@@ -322,7 +324,7 @@ class ExplainAnalyzer:
                 {"title": 1, "type": 1, "release_date": 1, "cast.$": 1},
             ).sort("release_date", -1).explain()
 
-    def _explain_neo4j(self, sid: str, ctx: dict):
+    def _explain_neo4j(self, sid: str, ctx: dict, with_indexes: bool):
         driver = self.connections["neo4j"]
         queries = {
             "S1": ("""
@@ -352,6 +354,12 @@ class ExplainAnalyzer:
                 ORDER BY views DESC LIMIT 100
             """, {}),
             "S4": ("""
+                PROFILE
+                CALL db.index.fulltext.queryNodes('content_title_ft', $term)
+                YIELD node AS c, score
+                RETURN c.content_id, c.title, c.popularity_score
+                ORDER BY c.popularity_score DESC LIMIT 20
+            """ if with_indexes else """
                 PROFILE
                 MATCH (c:Content)
                 WHERE c.title CONTAINS $term

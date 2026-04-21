@@ -1,4 +1,3 @@
-
 import random
 
 from pymongo import UpdateOne
@@ -61,8 +60,6 @@ class U1_UpdateWatchProgress(BaseScenario):
         )
 
     def run_neo4j(self, driver, ctx):
-        # NEO4J OPT: ORDER BY w.started_at DESC zapewnia deterministyczny wybór relacji WATCHED;
-        # indeks na Profile.profile_id eliminuje full scan przy MATCH
         with driver.session() as s:
             s.run("""
                 MATCH (p:Profile {profile_id: $pid})-[w:WATCHED]->(c:Content)
@@ -129,7 +126,6 @@ class U2_RecalcAvgRating(BaseScenario):
         db.content.update_one({"_id": self._cid}, {"$set": {"avg_rating": avg}})
 
     def run_neo4j(self, driver, ctx):
-        # NEO4J OPT: indeks na Content.content_id zapewnia O(1) lookup; avg obliczany inline
         with driver.session() as s:
             s.run("""
                 MATCH (:Profile)-[r:RATED]->(c:Content {content_id: $cid})
@@ -175,8 +171,6 @@ class U3_MassSubPlanChange(BaseScenario):
         )
 
     def run_neo4j(self, driver, ctx):
-        # NEO4J OPT: indeksy na Subscription.status i plan_name redukują skan do pasujących węzłów;
-        # CALL IN TRANSACTIONS OF 1000 ROWS commituje batchami zamiast jednej ogromnej transakcji
         with driver.session() as s:
             s.run("""
                 MATCH (s:Subscription)
@@ -292,7 +286,6 @@ class U4_UpdateUserData(BaseScenario):
         )
 
     def run_neo4j(self, driver, ctx):
-        # NEO4J OPT: indeks na User.user_id zapewnia O(1) lookup zamiast full scan
         with driver.session() as s:
             s.run("""
                 MATCH (u:User {user_id: $uid})
@@ -358,7 +351,6 @@ class U5_MarkContentInactive(BaseScenario):
         )
 
     def run_neo4j(self, driver, ctx):
-        # NEO4J OPT: indeks na Content.content_id zapewnia O(1) lookup
         with driver.session() as s:
             s.run("""
                 MATCH (c:Content {content_id: $cid})
@@ -416,11 +408,14 @@ class U6_MassPopularityUpdate(BaseScenario):
     def run_mysql(self, conn, ctx):
         cur = conn.cursor()
         cur.execute("""
-            UPDATE content c SET popularity_score = (
+            UPDATE content c
+            JOIN (
+                SELECT content_id, COUNT(*) AS cnt FROM ratings GROUP BY content_id
+            ) rc ON rc.content_id = c.content_id
+            SET c.popularity_score = (
                 c.total_views * 0.0001 +
                 c.avg_rating * 5 +
-                COALESCE((SELECT COUNT(*) FROM ratings r
-                          WHERE r.content_id = c.content_id), 0) * 0.1
+                rc.cnt * 0.1
             )
         """)
         conn.commit()
@@ -447,9 +442,6 @@ class U6_MassPopularityUpdate(BaseScenario):
             db.content.bulk_write(ops, ordered=False)
 
     def run_neo4j(self, driver, ctx):
-        # NEO4J OPT: CALL subquery izoluje OPTIONAL MATCH per węzeł Content;
-        # IN TRANSACTIONS OF 500 ROWS commituje co 500 węzłów — redukuje peak memory
-        # przy 30K Content × N relacji RATED bez konieczności trzymania całej transakcji w RAM
         with driver.session() as s:
             s.run("""
                 MATCH (c:Content)

@@ -71,6 +71,7 @@ class Neo4jLoader:
             "CREATE INDEX IF NOT EXISTS FOR (c:Content) ON (c.is_active)",
             "CREATE TEXT INDEX IF NOT EXISTS FOR (c:Content) ON (c.title)",
             "CREATE TEXT INDEX IF NOT EXISTS FOR (c:Content) ON (c.metadata)",
+            "CREATE FULLTEXT INDEX content_title_ft IF NOT EXISTS FOR (c:Content) ON EACH [c.title]",
             "CREATE INDEX IF NOT EXISTS FOR (s:Subscription) ON (s.status)",
             "CREATE INDEX IF NOT EXISTS FOR (p:Payment) ON (p.status)",
         ]
@@ -78,6 +79,18 @@ class Neo4jLoader:
             for idx in indexes:
                 session.run(idx)
         print("Neo4j: performance indexes created")
+
+    def drop_indexes(self) -> None:
+        with self.driver.session() as session:
+            result = session.run(
+                "SHOW INDEXES YIELD name, owningConstraint "
+                "WHERE owningConstraint IS NULL "
+                "RETURN name"
+            )
+            names = [row["name"] for row in result]
+            for name in names:
+                session.run(f"DROP INDEX `{name}` IF EXISTS")
+        print(f"Neo4j: dropped {len(names)} performance indexes")
 
     def close(self) -> None:
         self.driver.close()
