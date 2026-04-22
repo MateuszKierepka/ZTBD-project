@@ -110,6 +110,8 @@ class PostgresLoader:
             print(f"  WARNING: {table}.csv not found, skipping")
             return
 
+        start = time.perf_counter()
+
         with open(csv_path, "r", encoding="utf-8") as f:
             reader = csv.reader(f)
             columns = next(reader)
@@ -126,6 +128,8 @@ class PostgresLoader:
                     while chunk := f.read(8 * 1024 * 1024):
                         copy.write(chunk)
         conn.commit()
+        elapsed = time.perf_counter() - start
+        print(f"  {table}: loaded ({elapsed:.1f}s)")
 
     def create_indexes(self) -> None:
         print("Creating PostgreSQL indexes...")

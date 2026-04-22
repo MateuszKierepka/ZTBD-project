@@ -99,12 +99,13 @@ class D1_DeleteContentCascade(BaseScenario):
                 CREATE (c:Content {content_id: $cid, title: '_del_test',
                     type: 'movie', is_active: true,
                     created_at: '2025-01-01 00:00:00'})
-                WITH c
-                UNWIND range(1, 10) AS i
-                MATCH (p:Profile {profile_id: toInteger(rand() * $maxp) + 1})
+            """, cid=cid).consume()
+            s.run("""
+                MATCH (p:Profile) WITH p ORDER BY rand() LIMIT 10
+                MATCH (c:Content {content_id: $cid})
                 CREATE (p)-[:WATCHED {started_at: '2025-06-15',
                     progress_percent: 50, completed: false}]->(c)
-            """, cid=cid, maxp=ctx.max_ids["profiles"]).consume()
+            """, cid=cid).consume()
         self._cid = cid
 
     def run_postgres(self, conn, ctx):
@@ -217,12 +218,13 @@ class D2_DeleteProfileWithHistory(BaseScenario):
                 CREATE (p:Profile {profile_id: $pid, name: '_del_profile',
                     is_kids: false, maturity_rating: 'ALL', language: 'pl'})
                 CREATE (u)-[:HAS_PROFILE]->(p)
-                WITH p
-                UNWIND range(1, 20) AS i
-                MATCH (c:Content {content_id: toInteger(rand() * $maxc) + 1})
+            """, uid=uid, pid=pid).consume()
+            s.run("""
+                MATCH (c:Content) WITH c ORDER BY rand() LIMIT 20
+                MATCH (p:Profile {profile_id: $pid})
                 CREATE (p)-[:WATCHED {started_at: '2025-06-15',
                     progress_percent: 50, completed: false}]->(c)
-            """, uid=uid, pid=pid, maxc=ctx.max_ids["content"]).consume()
+            """, pid=pid).consume()
         self._pid = pid
 
     def run_postgres(self, conn, ctx):
@@ -257,7 +259,7 @@ class D2_DeleteProfileWithHistory(BaseScenario):
 
 class D3_CleanOldHistory(BaseScenario):
     id = "D3"
-    name = "Clean old watch history"
+    name = "Clean old ratings"
     category = "DELETE"
 
     _TEST_DATE = "2000-01-15 12:00:00"
@@ -266,16 +268,17 @@ class D3_CleanOldHistory(BaseScenario):
     def setup_postgres(self, conn, ctx):
         n = ctx.params["batch_watch_history"]
         conn.execute("""
-            INSERT INTO watch_history
-                (profile_id, content_id, started_at, progress_percent, completed)
+            INSERT INTO ratings
+                (profile_id, content_id, score, review_text, created_at, updated_at)
             SELECT
                 (floor(random() * %s) + 1)::BIGINT,
                 (floor(random() * %s) + 1)::BIGINT,
-                %s::TIMESTAMP,
-                0, FALSE
+                (floor(random() * 10) + 1)::INT,
+                '', %s::TIMESTAMP, %s::TIMESTAMP
             FROM generate_series(1, %s)
+            ON CONFLICT (profile_id, content_id) DO NOTHING
         """, (ctx.max_ids["profiles"], ctx.max_ids["content"],
-              self._TEST_DATE, n))
+              self._TEST_DATE, self._TEST_DATE, n))
         conn.commit()
 
     def setup_mysql(self, conn, ctx):
@@ -284,42 +287,50 @@ class D3_CleanOldHistory(BaseScenario):
         rows = [
             (random.randint(1, ctx.max_ids["profiles"]),
              random.randint(1, ctx.max_ids["content"]),
-             self._TEST_DATE, 0, 0)
+             random.randint(1, 10), "", self._TEST_DATE, self._TEST_DATE)
             for _ in range(n)
         ]
-        for i in range(0, n, 10_000):
-            cur.executemany(
-                "INSERT INTO watch_history"
-                " (profile_id, content_id, started_at,"
-                " progress_percent, completed)"
-                " VALUES (%s, %s, %s, %s, %s)",
-                rows[i:i + 10_000],
+        batch_size = 10_000
+        for i in range(0, n, batch_size):
+            batch = rows[i:i + batch_size]
+            placeholders = ", ".join(["(%s, %s, %s, %s, %s, %s)"] * len(batch))
+            flat = [v for row in batch for v in row]
+            cur.execute(
+                "INSERT IGNORE INTO ratings (profile_id, content_id, score, "
+                "review_text, created_at, updated_at) "
+                f"VALUES {placeholders}",
+                flat,
             )
             conn.commit()
 
     def setup_mongo(self, db, ctx):
         n = ctx.params["batch_watch_history"]
-        base_wid = ctx.test_id("watch_history") + 400_000
+        base_rid = ctx.test_id("ratings") + 400_000
         for i in range(0, n, 10_000):
             batch_size = min(10_000, n - i)
             docs = [
                 {
-                    "_id": base_wid + i + j,
+                    "_id": base_rid + i + j,
                     "profile_id": random.randint(1, ctx.max_ids["profiles"]),
                     "content_id": random.randint(1, ctx.max_ids["content"]),
-                    "started_at": self._TEST_DATE,
-                    "progress_percent": 0,
-                    "completed": False,
+                    "score": random.randint(1, 10),
+                    "review_text": "",
+                    "created_at": self._TEST_DATE,
+                    "updated_at": self._TEST_DATE,
                 }
                 for j in range(batch_size)
             ]
-            db.watch_history.insert_many(docs, ordered=False)
+            try:
+                db.ratings.insert_many(docs, ordered=False)
+            except Exception:
+                pass
 
     def setup_neo4j(self, driver, ctx):
         n = ctx.params["batch_watch_history"]
         rows = [
             {"pid": random.randint(1, ctx.max_ids["profiles"]),
-             "cid": random.randint(1, ctx.max_ids["content"])}
+             "cid": random.randint(1, ctx.max_ids["content"]),
+             "score": round(random.uniform(1, 10), 1)}
             for _ in range(n)
         ]
         with driver.session() as s:
@@ -328,13 +339,12 @@ class D3_CleanOldHistory(BaseScenario):
                     UNWIND $rows AS r
                     MATCH (p:Profile {profile_id: r.pid})
                     MATCH (c:Content {content_id: r.cid})
-                    CREATE (p)-[:WATCHED {started_at: $date,
-                        progress_percent: 0, completed: false}]->(c)
+                    CREATE (p)-[:RATED {score: r.score, rated_at: $date}]->(c)
                 """, rows=rows[j:j + 5000], date=self._TEST_DATE).consume()
 
     def run_postgres(self, conn, ctx):
         conn.execute(
-            "DELETE FROM watch_history WHERE started_at < %s",
+            "DELETE FROM ratings WHERE created_at < %s",
             (self._TEST_CUTOFF,),
         )
         conn.commit()
@@ -342,22 +352,22 @@ class D3_CleanOldHistory(BaseScenario):
     def run_mysql(self, conn, ctx):
         cur = conn.cursor()
         cur.execute(
-            "DELETE FROM watch_history WHERE started_at < %s",
+            "DELETE FROM ratings WHERE created_at < %s",
             (self._TEST_CUTOFF,),
         )
         conn.commit()
 
     def run_mongo(self, db, ctx):
-        db.watch_history.delete_many({"started_at": {"$lt": self._TEST_CUTOFF}})
+        db.ratings.delete_many({"created_at": {"$lt": self._TEST_CUTOFF}})
 
     def run_neo4j(self, driver, ctx):
         with driver.session() as s:
             while True:
                 result = s.run("""
-                    MATCH ()-[w:WATCHED]->()
-                    WHERE w.started_at < $cutoff
-                    WITH w LIMIT 10000
-                    DELETE w
+                    MATCH ()-[r:RATED]->()
+                    WHERE r.rated_at < $cutoff
+                    WITH r LIMIT 10000
+                    DELETE r
                     RETURN count(*) AS deleted
                 """, cutoff=self._TEST_CUTOFF)
                 deleted = result.single()["deleted"]

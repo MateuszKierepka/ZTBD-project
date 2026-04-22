@@ -39,6 +39,7 @@ class BenchmarkContext:
     volume: str
     max_ids: dict[str, int]
     params: dict[str, object]
+    with_indexes: bool = False
     _counter: int = field(default=0, repr=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 

@@ -26,28 +26,38 @@ class Neo4jLoader:
         self._clear_database()
         self._create_constraints()
 
-        self._load_user_nodes()
-        self._load_profile_nodes()
-        self._load_subscription_nodes()
-        self._load_payment_nodes()
-        self._load_person_nodes()
-        self._load_content_nodes()
-        self._load_genre_nodes()
-        self._load_season_nodes()
-        self._load_episode_nodes()
+        for label, method in [
+            ("users", self._load_user_nodes),
+            ("profiles", self._load_profile_nodes),
+            ("subscriptions", self._load_subscription_nodes),
+            ("payments", self._load_payment_nodes),
+            ("people", self._load_person_nodes),
+            ("content", self._load_content_nodes),
+            ("genres", self._load_genre_nodes),
+            ("seasons", self._load_season_nodes),
+            ("episodes", self._load_episode_nodes),
+        ]:
+            start = time.perf_counter()
+            method()
+            print(f"  {label}: loaded ({time.perf_counter() - start:.1f}s)")
 
-        print("Nodes created. Loading relationships...")
+        print("  Nodes created. Loading relationships...")
 
-        self._create_user_profile_rels()
-        self._create_user_subscription_rels()
-        self._create_subscription_payment_rels()
-        self._create_content_genre_rels()
-        self._create_content_season_rels()
-        self._create_season_episode_rels()
-        self._create_content_people_rels()
-        self._create_watched_rels()
-        self._create_my_list_rels()
-        self._create_rated_rels()
+        for label, method in [
+            ("user->profile", self._create_user_profile_rels),
+            ("user->subscription", self._create_user_subscription_rels),
+            ("subscription->payment", self._create_subscription_payment_rels),
+            ("content->genre", self._create_content_genre_rels),
+            ("content->season", self._create_content_season_rels),
+            ("season->episode", self._create_season_episode_rels),
+            ("content_people", self._create_content_people_rels),
+            ("watch_history", self._create_watched_rels),
+            ("my_list", self._create_my_list_rels),
+            ("ratings", self._create_rated_rels),
+        ]:
+            start = time.perf_counter()
+            method()
+            print(f"  {label}: loaded ({time.perf_counter() - start:.1f}s)")
 
         elapsed = time.perf_counter() - total_start
         print(f"Neo4j: loaded successfully ({elapsed:.2f}s)")
@@ -61,6 +71,7 @@ class Neo4jLoader:
             "CREATE INDEX IF NOT EXISTS FOR (c:Content) ON (c.is_active)",
             "CREATE TEXT INDEX IF NOT EXISTS FOR (c:Content) ON (c.title)",
             "CREATE TEXT INDEX IF NOT EXISTS FOR (c:Content) ON (c.metadata)",
+            "CREATE FULLTEXT INDEX content_title_ft IF NOT EXISTS FOR (c:Content) ON EACH [c.title]",
             "CREATE INDEX IF NOT EXISTS FOR (s:Subscription) ON (s.status)",
             "CREATE INDEX IF NOT EXISTS FOR (p:Payment) ON (p.status)",
         ]
@@ -68,6 +79,18 @@ class Neo4jLoader:
             for idx in indexes:
                 session.run(idx)
         print("Neo4j: performance indexes created")
+
+    def drop_indexes(self) -> None:
+        with self.driver.session() as session:
+            result = session.run(
+                "SHOW INDEXES YIELD name, owningConstraint "
+                "WHERE owningConstraint IS NULL "
+                "RETURN name"
+            )
+            names = [row["name"] for row in result]
+            for name in names:
+                session.run(f"DROP INDEX `{name}` IF EXISTS")
+        print(f"Neo4j: dropped {len(names)} performance indexes")
 
     def close(self) -> None:
         self.driver.close()

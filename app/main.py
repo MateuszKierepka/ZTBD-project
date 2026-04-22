@@ -59,7 +59,9 @@ def cmd_load(args: argparse.Namespace) -> None:
             from src.loaders.neo4j_loader import Neo4jLoader
             loader = Neo4jLoader(data_dir)
             loader.load_all()
-            if not no_indexes:
+            if no_indexes:
+                loader.drop_indexes()
+            else:
                 loader.create_indexes()
             loader.close()
 

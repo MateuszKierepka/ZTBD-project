@@ -143,38 +143,46 @@ class S2_CollaborativeFiltering(BaseScenario):
 
 class S3_Top100Viewership(BaseScenario):
     id = "S3"
-    name = "TOP 100 content by recent viewership"
+    name = "TOP 100 content by recent ratings count"
     category = "SELECT"
+
+    _CUTOFF = "2025-06-01"
 
     def run_postgres(self, conn, ctx):
         conn.execute("""
-            SELECT c.content_id, c.title, COUNT(*) AS views
-            FROM watch_history wh
-            JOIN content c ON wh.content_id = c.content_id
-            WHERE wh.started_at >= '2025-06-01'
+            SELECT c.content_id, c.title, COUNT(*) AS rating_count,
+                   AVG(r.score) AS avg_score
+            FROM ratings r
+            JOIN content c ON r.content_id = c.content_id
+            WHERE r.created_at >= %s
             GROUP BY c.content_id, c.title
-            ORDER BY views DESC
+            ORDER BY rating_count DESC
             LIMIT 100
-        """).fetchall()
+        """, (self._CUTOFF,)).fetchall()
 
     def run_mysql(self, conn, ctx):
         cur = conn.cursor()
         cur.execute("""
-            SELECT c.content_id, c.title, COUNT(*) AS views
-            FROM watch_history wh
-            JOIN content c ON wh.content_id = c.content_id
-            WHERE wh.started_at >= '2025-06-01'
+            SELECT c.content_id, c.title, COUNT(*) AS rating_count,
+                   AVG(r.score) AS avg_score
+            FROM ratings r
+            JOIN content c ON r.content_id = c.content_id
+            WHERE r.created_at >= %s
             GROUP BY c.content_id, c.title
-            ORDER BY views DESC
+            ORDER BY rating_count DESC
             LIMIT 100
-        """)
+        """, (self._CUTOFF,))
         cur.fetchall()
 
     def run_mongo(self, db, ctx):
-        list(db.watch_history.aggregate([
-            {"$match": {"started_at": {"$gte": "2025-06-01"}}},
-            {"$group": {"_id": "$content_id", "views": {"$sum": 1}}},
-            {"$sort": {"views": -1}},
+        list(db.ratings.aggregate([
+            {"$match": {"created_at": {"$gte": self._CUTOFF}}},
+            {"$group": {
+                "_id": "$content_id",
+                "rating_count": {"$sum": 1},
+                "avg_score": {"$avg": "$score"},
+            }},
+            {"$sort": {"rating_count": -1}},
             {"$limit": 100},
             {"$lookup": {
                 "from": "content", "localField": "_id",
@@ -185,12 +193,12 @@ class S3_Top100Viewership(BaseScenario):
     def run_neo4j(self, driver, ctx):
         with driver.session() as s:
             s.run("""
-                MATCH (p:Profile)-[w:WATCHED]->(c:Content)
-                WHERE w.started_at >= '2025-06-01'
-                RETURN c.content_id, c.title, COUNT(*) AS views
-                ORDER BY views DESC
+                MATCH ()-[r:RATED]->(c:Content)
+                WHERE r.rated_at >= $cutoff
+                RETURN c.content_id, c.title, COUNT(r) AS rating_count, avg(r.score) AS avg_score
+                ORDER BY rating_count DESC
                 LIMIT 100
-            """).consume()
+            """, cutoff=self._CUTOFF).consume()
 
 
 class S4_FullTextSearch(BaseScenario):
@@ -243,13 +251,22 @@ class S4_FullTextSearch(BaseScenario):
     def run_neo4j(self, driver, ctx):
         term = ctx.params["search_term"]
         with driver.session() as s:
-            s.run("""
-                MATCH (c:Content)
-                WHERE c.title CONTAINS $term
-                RETURN c.content_id, c.title, c.popularity_score
-                ORDER BY c.popularity_score DESC
-                LIMIT 20
-            """, term=term).consume()
+            if ctx.with_indexes:
+                s.run("""
+                    CALL db.index.fulltext.queryNodes('content_title_ft', $term)
+                    YIELD node AS c, score
+                    RETURN c.content_id, c.title, c.popularity_score
+                    ORDER BY c.popularity_score DESC
+                    LIMIT 20
+                """, term=term).consume()
+            else:
+                s.run("""
+                    MATCH (c:Content)
+                    WHERE c.title CONTAINS $term
+                    RETURN c.content_id, c.title, c.popularity_score
+                    ORDER BY c.popularity_score DESC
+                    LIMIT 20
+                """, term=term).consume()
 
 
 class S5_WatchHistory(BaseScenario):

@@ -62,8 +62,8 @@ class U1_UpdateWatchProgress(BaseScenario):
     def run_neo4j(self, driver, ctx):
         with driver.session() as s:
             s.run("""
-                MATCH (p:Profile {profile_id: $pid})-[w:WATCHED]->()
-                WITH w LIMIT 1
+                MATCH (p:Profile {profile_id: $pid})-[w:WATCHED]->(c:Content)
+                WITH w ORDER BY w.started_at DESC LIMIT 1
                 SET w.progress_percent = 75.50, w.completed = false
             """, pid=self._pid).consume()
 
@@ -175,8 +175,10 @@ class U3_MassSubPlanChange(BaseScenario):
             s.run("""
                 MATCH (s:Subscription)
                 WHERE s.status = 'active' AND s.plan_name = 'Basic'
-                SET s.plan_name = 'Standard', s.price_monthly = 43.99,
-                    s.max_streams = 2, s.max_resolution = '1080p'
+                CALL (s) {
+                    SET s.plan_name = 'Standard', s.price_monthly = 43.99,
+                        s.max_streams = 2, s.max_resolution = '1080p'
+                } IN TRANSACTIONS OF 1000 ROWS
             """).consume()
 
     def teardown_postgres(self, conn, ctx):
@@ -219,8 +221,10 @@ class U3_MassSubPlanChange(BaseScenario):
                 MATCH (s:Subscription)
                 WHERE s.status = 'active' AND s.plan_name = 'Standard'
                   AND s.price_monthly = 43.99
-                SET s.plan_name = 'Basic', s.price_monthly = 29.99,
-                    s.max_streams = 1, s.max_resolution = '720p'
+                CALL (s) {
+                    SET s.plan_name = 'Basic', s.price_monthly = 29.99,
+                        s.max_streams = 1, s.max_resolution = '720p'
+                } IN TRANSACTIONS OF 1000 ROWS
             """).consume()
 
 
@@ -388,23 +392,30 @@ class U6_MassPopularityUpdate(BaseScenario):
 
     def run_postgres(self, conn, ctx):
         conn.execute("""
-            UPDATE content SET popularity_score = (
+            UPDATE content
+            SET popularity_score = (
                 total_views * 0.0001 +
                 avg_rating * 5 +
-                COALESCE((SELECT COUNT(*) FROM ratings
-                          WHERE content_id = content.content_id), 0) * 0.1
+                COALESCE(rc.cnt, 0) * 0.1
             )
+            FROM (
+                SELECT content_id, COUNT(*) AS cnt FROM ratings GROUP BY content_id
+            ) rc
+            WHERE rc.content_id = content.content_id
         """)
         conn.commit()
 
     def run_mysql(self, conn, ctx):
         cur = conn.cursor()
         cur.execute("""
-            UPDATE content c SET popularity_score = (
+            UPDATE content c
+            JOIN (
+                SELECT content_id, COUNT(*) AS cnt FROM ratings GROUP BY content_id
+            ) rc ON rc.content_id = c.content_id
+            SET c.popularity_score = (
                 c.total_views * 0.0001 +
                 c.avg_rating * 5 +
-                COALESCE((SELECT COUNT(*) FROM ratings r
-                          WHERE r.content_id = c.content_id), 0) * 0.1
+                rc.cnt * 0.1
             )
         """)
         conn.commit()
@@ -434,10 +445,13 @@ class U6_MassPopularityUpdate(BaseScenario):
         with driver.session() as s:
             s.run("""
                 MATCH (c:Content)
-                OPTIONAL MATCH (:Profile)-[r:RATED]->(c)
-                WITH c, c.total_views * 0.0001 + c.avg_rating * 5 +
-                     count(r) * 0.1 AS score
-                SET c.popularity_score = score
+                CALL (c) {
+                    OPTIONAL MATCH (:Profile)-[r:RATED]->(c)
+                    WITH c, avg(r.score) AS avgScore, count(r) AS ratingCount
+                    SET c.popularity_score = (
+                        c.total_views * 0.0001 + c.avg_rating * 5 + ratingCount * 0.1
+                    )
+                } IN TRANSACTIONS OF 500 ROWS
             """).consume()
 
 

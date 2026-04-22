@@ -26,12 +26,17 @@ class MongoLoader:
         total_start = time.perf_counter()
 
         self._drop_collections()
-        self._load_users()
-        self._load_content()
-        self._load_watch_history()
-        self._load_ratings()
-        self._load_payments()
-        self._load_my_list()
+        for name, method in [
+            ("users", self._load_users),
+            ("content", self._load_content),
+            ("watch_history", self._load_watch_history),
+            ("ratings", self._load_ratings),
+            ("payments", self._load_payments),
+            ("my_list", self._load_my_list),
+        ]:
+            start = time.perf_counter()
+            method()
+            print(f"  {name}: loaded ({time.perf_counter() - start:.1f}s)")
 
         elapsed = time.perf_counter() - total_start
         print(f"MongoDB: loaded successfully ({elapsed:.2f}s)")
