@@ -195,16 +195,24 @@ class Visualizer:
         index_variants = sorted(stats["with_indexes"].unique())
 
         n_scenarios = len(scenarios)
-        fig, axes = plt.subplots(1, n_scenarios, figsize=(5 * n_scenarios, 5))
+        if n_scenarios <= 3:
+            n_rows, n_cols = 1, n_scenarios
+        else:
+            n_cols = 3
+            n_rows = (n_scenarios + n_cols - 1) // n_cols
+        fig, axes = plt.subplots(n_rows, n_cols,
+                                 figsize=(5 * n_cols, 5 * n_rows))
         if n_scenarios == 1:
-            axes = [axes]
+            axes_flat = [axes]
+        else:
+            axes_flat = list(np.atleast_1d(axes).flatten())
 
         fig.suptitle(
             f"{category} — wolumen {volume} (szczegóły per scenariusz)",
             fontsize=14, fontweight="bold",
         )
 
-        for ax, sid in zip(axes, scenarios):
+        for ax, sid in zip(axes_flat, scenarios):
             sdata = stats[stats["scenario_id"] == sid]
             sname = sdata["scenario_name"].iloc[0]
             x = np.arange(len(databases))
@@ -243,6 +251,9 @@ class Visualizer:
             ax.set_ylabel("Mediana czasu [ms]")
             ax.legend(fontsize=7)
             ax.grid(axis="y", alpha=0.3)
+
+        for ax in axes_flat[len(scenarios):]:
+            ax.set_visible(False)
 
         plt.tight_layout()
         path = self.output_dir / f"detail_{category.lower()}_{volume}.png"
