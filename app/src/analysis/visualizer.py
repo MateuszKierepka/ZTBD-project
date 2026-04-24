@@ -71,6 +71,12 @@ class Visualizer:
                 if not cdf.empty:
                     files.append(self._chart_scenarios_detail(cdf, volume, cat))
 
+            for sid in sorted(vdf["scenario_id"].unique(),
+                              key=lambda s: (s[0], int(s[1:]) if s[1:].isdigit() else 0)):
+                sdf = vdf[vdf["scenario_id"] == sid]
+                if not sdf.empty:
+                    files.append(self._chart_per_scenario(sdf, volume, sid))
+
         all_volumes = sorted(self.df["volume"].unique())
         if len(all_volumes) > 1:
             files.append(self._chart_volume_scaling(self.df, all_volumes))
@@ -189,16 +195,24 @@ class Visualizer:
         index_variants = sorted(stats["with_indexes"].unique())
 
         n_scenarios = len(scenarios)
-        fig, axes = plt.subplots(1, n_scenarios, figsize=(5 * n_scenarios, 5))
+        if n_scenarios <= 3:
+            n_rows, n_cols = 1, n_scenarios
+        else:
+            n_cols = 3
+            n_rows = (n_scenarios + n_cols - 1) // n_cols
+        fig, axes = plt.subplots(n_rows, n_cols,
+                                 figsize=(5 * n_cols, 5 * n_rows))
         if n_scenarios == 1:
-            axes = [axes]
+            axes_flat = [axes]
+        else:
+            axes_flat = list(np.atleast_1d(axes).flatten())
 
         fig.suptitle(
             f"{category} — wolumen {volume} (szczegóły per scenariusz)",
             fontsize=14, fontweight="bold",
         )
 
-        for ax, sid in zip(axes, scenarios):
+        for ax, sid in zip(axes_flat, scenarios):
             sdata = stats[stats["scenario_id"] == sid]
             sname = sdata["scenario_name"].iloc[0]
             x = np.arange(len(databases))
@@ -238,8 +252,68 @@ class Visualizer:
             ax.legend(fontsize=7)
             ax.grid(axis="y", alpha=0.3)
 
+        for ax in axes_flat[len(scenarios):]:
+            ax.set_visible(False)
+
         plt.tight_layout()
         path = self.output_dir / f"detail_{category.lower()}_{volume}.png"
+        fig.savefig(path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        return path
+
+    def _chart_per_scenario(self, sdf: pd.DataFrame, volume: str,
+                            scenario_id: str) -> Path:
+        stats = self._stats(sdf)
+        scenario_name = stats["scenario_name"].iloc[0]
+        databases = ["postgres", "mysql", "mongo", "neo4j"]
+        index_variants = sorted(stats["with_indexes"].unique())
+
+        fig, ax = plt.subplots(figsize=(9, 7))
+        x = np.arange(len(databases))
+        width = 0.35 if len(index_variants) == 2 else 0.6
+
+        variant_colors = {False: "#1f77b4", True: "#ff7f0e"}
+        variant_labels = {False: "Bez indeksów", True: "Z indeksami"}
+
+        for j, wi in enumerate(index_variants):
+            wi_data = stats[stats["with_indexes"] == wi]
+            values, err_lo, err_hi = [], [], []
+            for db in databases:
+                db_row = wi_data[wi_data["database"] == db]
+                if not db_row.empty:
+                    med = db_row["median"].values[0]
+                    values.append(med)
+                    err_lo.append(med - db_row["min"].values[0])
+                    err_hi.append(db_row["max"].values[0] - med)
+                else:
+                    values.append(0)
+                    err_lo.append(0)
+                    err_hi.append(0)
+
+            offset = (j - 0.5) * width if len(index_variants) == 2 else 0
+            bars = ax.bar(x + offset + width / 2, values, width,
+                          label=variant_labels[wi], color=variant_colors[wi],
+                          yerr=[err_lo, err_hi], capsize=4,
+                          error_kw={"linewidth": 1.0})
+            for bar, val in zip(bars, values):
+                if val > 0:
+                    ax.text(bar.get_x() + bar.get_width() / 2,
+                            bar.get_height(), f"{val:.1f}",
+                            ha="center", va="bottom", fontsize=9)
+
+        ax.set_title(f"{scenario_id}: {scenario_name}",
+                     fontsize=13, fontweight="bold")
+        ax.set_xticks(x)
+        ax.set_xticklabels([DB_LABELS[db] for db in databases],
+                           rotation=30, ha="right", fontsize=10)
+        ax.set_ylabel("Mediana czasu [ms]", fontsize=11)
+        ax.legend(fontsize=10, loc="upper left")
+        ax.grid(axis="y", alpha=0.3)
+
+        plt.tight_layout()
+        volume_dir = self.output_dir / volume
+        volume_dir.mkdir(parents=True, exist_ok=True)
+        path = volume_dir / f"chart_{scenario_id}.png"
         fig.savefig(path, dpi=150, bbox_inches="tight")
         plt.close(fig)
         return path

@@ -1,0 +1,268 @@
+PostgreSQL to otwartoźródłowy, obiektowo-relacyjny system zarządzania bazą danych
+(ORDBMS) rozwijany nieprzerwanie od 1986 roku (projekt POSTGRES na Uniwersytecie
+Kalifornijskim w Berkeley). Obecna linia 17.x (stan na 2025~r.) oferuje pełną
+zgodność z wieloma rozszerzeniami standardu SQL:2016, silnik transakcyjny oparty
+o MVCC oraz jeden z najbogatszych ekosystemów rozszerzeń spośród silników SQL.
+PostgreSQL jest dystrybuowany na liberalnej licencji PostgreSQL License
+(w duchu zbliżonym do BSD/MIT), co dopuszcza dowolne wykorzystanie komercyjne
+bez opłat licencyjnych.
+
+\subsection{Skalowalność}
+
+PostgreSQL bardzo dobrze skaluje się \textit{w pionie} -- silnik efektywnie
+wykorzystuje duże ilości pamięci RAM (dziesiątki do setek gigabajtów),
+wielordzeniowe CPU oraz szybkie dyski NVMe. Od wersji~9.6 zapytania mogą
+być wykonywane równolegle przez kilku workerów (\textit{parallel sequential
+scan}, \textit{parallel join}, \textit{parallel aggregate}), co znacząco
+przyspiesza analitykę na dużych tabelach. Wbudowana \textbf{deklaratywna
+partycjonowanie} (od wersji~10) obsługuje partycje zakresowe (\textit{range}),
+listowe (\textit{list}) oraz hashowe, w połączeniu z \textit{partition pruning}
+ograniczającym skan tylko do tych partycji, które spełniają warunki zapytania.
+
+Skalowanie \textit{w poziomie} nie jest natywną cechą silnika -- PostgreSQL
+nie ma wbudowanego shardingu. W praktyce stosuje się trzy podejścia:
+replikację \textit{streaming replication} (asynchroniczną lub synchroniczną)
+z gorącymi replikami odczytu (\textit{hot standby}), replikację logiczną
+(od wersji~10) pozwalającą na selektywny transfer tabel między klastrami,
+oraz rozszerzenia takie jak \textbf{Citus} zamieniające PostgreSQL w rozproszoną
+bazę z automatycznym shardingiem. Dla obsługi dużej liczby jednoczesnych
+połączeń często używa się poolerów (\texttt{pgbouncer}, \texttt{pgpool-II}),
+bo każde połączenie do PostgreSQL oznacza oddzielny proces systemowy -- relatywnie
+drogi w porównaniu do modelu wątkowego MySQL.
+
+Limity techniczne: pojedyncza tabela może mieć do 32~TB danych, 1600 kolumn
+oraz praktycznie nieograniczoną liczbę wierszy.
+
+\subsection{Bezpieczeństwo}
+
+PostgreSQL oferuje wielowarstwowy model bezpieczeństwa. Kontrola dostępu
+do serwera jest konfigurowana deklaratywnie w pliku \texttt{pg\_hba.conf}
+(\textit{host-based authentication}) -- każdy wpis dopasowuje kombinację
+bazy, roli, adresu IP i wybiera metodę uwierzytelniania. Obsługiwane mechanizmy
+obejmują hasła (\texttt{scram-sha-256} jako domyślne, bezpieczniejsze niż
+wycofywane \texttt{md5}), certyfikaty klienckie (\texttt{cert}),
+Kerberos/GSSAPI, SSPI (Windows Active Directory), LDAP, RADIUS oraz PAM.
+Komunikacja z klientem może być szyfrowana SSL/TLS -- serwer może wymuszać
+szyfrowanie per kombinacja użytkownik-baza-źródło.
+
+Na poziomie obiektów baza implementuje klasyczny model ról (RBAC) -- role
+są zarówno użytkownikami, jak i grupami, a uprawnienia przyznawane są
+poleceniami \texttt{GRANT}/\texttt{REVOKE} na bazach, schematach, tabelach,
+kolumnach, sekwencjach i funkcjach. Od wersji~9.5 dostępne jest
+\textbf{Row-Level Security (RLS)} -- polityki filtrujące wiersze zwracane
+i modyfikowane przez każde zapytanie w zależności od bieżącej roli, co jest
+mechanizmem często wykorzystywanym w aplikacjach wielodostępnych
+(\textit{multi-tenant}).
+
+Do rejestracji zdarzeń audytowych służy rozszerzenie \textbf{pgaudit}
+(szczegółowe logowanie DDL/DML/ROLE na potrzeby wymagań regulacyjnych
+typu SOX, HIPAA, RODO), a do szyfrowania pól -- \textbf{pgcrypto}
+(funkcje haszujące i symetryczne/asymetryczne szyfrowanie na poziomie
+kolumny). Szyfrowanie całej bazy \textit{at rest} (TDE) nie jest natywne --
+realizowane jest zwykle przez szyfrowanie systemu plików lub wolumenu
+(LUKS, dm-crypt, AWS EBS encryption).
+
+\subsection{Awaryjność}
+
+Fundamentem trwałości i odtwarzania PostgreSQL jest \textbf{Write-Ahead Log}
+(WAL) -- każda modyfikacja danych najpierw trafia do dziennika, a dopiero
+potem może być zapisana do właściwych plików tabel. Mechanizm gwarantuje
+własność \textbf{ACID} (atomicity, consistency, isolation, durability)
+transakcji nawet w przypadku awarii serwera, zanikania zasilania czy
+padnięcia sprzętu -- przy kolejnym starcie silnik automatycznie odtwarza
+niedokończone transakcje (\textit{crash recovery}).
+
+Na bazie WAL zbudowane są mechanizmy replikacji i odtwarzania:
+
+\begin{itemize}
+    \item \textbf{Streaming replication} -- asynchroniczna lub synchroniczna
+    replikacja fizyczna. Replika jest identycznym bit-po-bicie obrazem master-a
+    i może obsługiwać zapytania odczytu (tzw.~\textit{hot standby}).
+    \item \textbf{Point-in-Time Recovery (PITR)} -- archiwizacja WAL do
+    zewnętrznego magazynu (S3, dysk sieciowy) i odtworzenie bazy do dowolnego
+    momentu w przeszłości, z dokładnością do pojedynczej transakcji.
+    \item \textbf{Replikacja logiczna} (od wersji~10) -- transfer zmian
+    na poziomie tabel i wierszy, z możliwością replikowania tylko wybranych
+    obiektów między klastrami o różnych wersjach lub schematach.
+    \item \textbf{Base backup} -- \texttt{pg\_basebackup} (fizyczny) oraz
+    \texttt{pg\_dump}/\texttt{pg\_dumpall} (logiczny, przenośny między
+    wersjami i architekturami).
+\end{itemize}
+
+Wysoka dostępność (HA) w praktyce produkcyjnej opiera się na zewnętrznych
+narzędziach orkiestrujących automatyczny failover: \textbf{Patroni} (oparty
+o etcd/Consul/ZooKeeper), \textbf{repmgr} oraz \textbf{pg\_auto\_failover}
+(narzędzie Citus Data/Microsoft).
+
+\subsection{Migracje}
+
+PostgreSQL udostępnia trzy klasy narzędzi migracyjnych. Do migracji danych
+między instancjami PostgreSQL służy \texttt{pg\_dump}/\texttt{pg\_restore}
+(zrzuty logiczne -- obsługują migracje między różnymi wersjami majorowymi
+i architekturami sprzętowymi) oraz \texttt{pg\_upgrade} (w-miejscu, bez
+przenoszenia danych -- operuje na plikach bazy i aktualizuje katalog systemowy).
+Od wersji~10 replikacja logiczna umożliwia \textit{zero-downtime} migracje
+major-version poprzez równoległą replikę utrzymywaną na nowej wersji, na którą
+aplikacja jest przełączana w momencie dogonienia zmian.
+
+Do migracji \textbf{z innych silników} najpopularniejszym narzędziem jest
+\textbf{pgloader} -- wspiera bezpośredni import z MySQL, SQLite, MS~SQL Server,
+a także z plików CSV, DBF i JSON. W środowiskach chmurowych funkcję
+migracji heterogenicznych pełnią usługi zarządzane (AWS Database Migration
+Service, Google Database Migration Service, Azure Database Migration Service).
+
+Wersjonowanie schematu realizowane jest narzędziami zewnętrznymi
+niezależnymi od silnika -- \textbf{Flyway}, \textbf{Liquibase},
+\textbf{Sqitch} czy rozwiązania wbudowane w frameworki (Django migrations,
+Alembic dla SQLAlchemy, Active Record migrations w Ruby on Rails, Prisma
+Migrate). Warto odnotować, że PostgreSQL obsługuje \textbf{transakcyjne DDL} --
+\texttt{CREATE TABLE}, \texttt{ALTER TABLE} i \texttt{DROP TABLE} mogą być
+wycofane w ramach \texttt{ROLLBACK}, co znacząco zmniejsza ryzyko błędnych
+migracji (w MySQL większość instrukcji DDL niejawnie commituje transakcję).
+
+\subsection{Integracje}
+
+PostgreSQL udostępnia drivery dla praktycznie każdego popularnego języka
+programowania: \textbf{libpq} (C/C++), JDBC (Java), Npgsql (.NET),
+psycopg/asyncpg (Python), pg/pgx (Go), pq/pg-pool (Node.js), Rust
+(sqlx, tokio-postgres), Ruby (pg), PHP (PDO\_PGSQL). W warstwie ORM wspierany
+jest przez wszystkie mainstreamowe frameworki: Django ORM, SQLAlchemy,
+Hibernate, Entity Framework, ActiveRecord, Prisma, TypeORM, GORM.
+Narzędzia BI i analityczne (Tableau, Power BI, Metabase, Apache Superset,
+Grafana, Looker) mają natywne konektory.
+
+Szczególną cechą PostgreSQL są \textbf{Foreign Data Wrappers} (FDW) --
+mechanizm pozwalający odpytywać dane w zewnętrznych źródłach tak, jakby
+były natywnymi tabelami. Dostępne FDW obejmują \texttt{postgres\_fdw}
+(dostęp do innych instancji PostgreSQL), \texttt{mysql\_fdw}, \texttt{mongo\_fdw},
+\texttt{redis\_fdw}, \texttt{file\_fdw} (pliki CSV), \texttt{jdbc\_fdw}
+oraz wrappery do S3, Kafki i systemów plików Hadoop. Do integracji
+strumieniowej (CDC -- \textit{Change Data Capture}) wykorzystuje się
+\textbf{Debezium} konsumujący replikację logiczną i publikujący zmiany
+na Apache Kafka.
+
+W chmurze PostgreSQL jest dostępny w modelu zarządzanym na wszystkich
+trzech dużych platformach: AWS (RDS for PostgreSQL, Aurora PostgreSQL-Compatible),
+Google Cloud (Cloud SQL, AlloyDB), Azure (Azure Database for PostgreSQL --
+w wersjach Flexible Server oraz Hyperscale/Citus).
+
+\subsection{Obszary biznesowe}
+
+Dzięki ścisłej zgodności ze standardem, bogatemu katalogowi typów danych
+i dojrzałości silnika, PostgreSQL jest uniwersalnym wyborem w większości
+scenariuszy OLTP oraz HTAP (\textit{Hybrid Transactional/Analytical}).
+Szczególnie mocną pozycję ma w następujących obszarach:
+
+\begin{itemize}
+    \item \textbf{Sektor finansowy} -- ACID, izolacja serializowalna, wsparcie
+    dla typów \texttt{NUMERIC} o dowolnej precyzji (bez błędów
+    zmiennoprzecinkowych), audyt przez pgaudit.
+    \item \textbf{Administracja publiczna i instytucje} -- otwarta licencja
+    eliminuje koszty licencyjne, a transparentność kodu jest istotna
+    w kontekście suwerenności danych.
+    \item \textbf{Systemy geograficzne (GIS)} -- rozszerzenie \textbf{PostGIS}
+    jest de facto standardem branżowym dla operacji geoprzestrzennych,
+    wykorzystywanym przez OpenStreetMap, systemy katastralne i logistyczne.
+    \item \textbf{E-commerce i systemy transakcyjne} -- Shopify, Magento,
+    WooCommerce natywnie wspierają PostgreSQL jako backend.
+    \item \textbf{Szeroko rozumiany sektor technologiczny} -- Apple używa
+    PostgreSQL w iCloud, Instagram jako głównego store'a grafu społecznego,
+    Reddit jako backend-u platformy, podobnie TripAdvisor, GitLab i wiele
+    innych SaaS-ów z obciążeniem rzędu miliardów rekordów.
+    \item \textbf{Nauka i akademia} -- natywne wsparcie dla tablic, typów
+    dokumentowych (JSONB), pełnotekstowego wyszukiwania i rozszerzeń
+    statystycznych (MADlib).
+\end{itemize}
+
+\subsection{Zalety}
+
+\begin{itemize}
+    \item \textbf{Pełna zgodność ACID} i MVCC -- czytelnicy nie blokują
+    pisarzy ani odwrotnie, co daje wysoką współbieżność bez zakleszczeń
+    charakterystycznych dla modeli z blokadami.
+    \item \textbf{Bogactwo typów danych} -- oprócz standardowego SQL:
+    tablice, zakresy (\texttt{RANGE}), hstore, JSON/JSONB, UUID, typy
+    geometryczne, sieciowe (CIDR, INET, MACADDR), pełnotekstowe
+    (\texttt{tsvector}/\texttt{tsquery}), a także typy niestandardowe
+    definiowane przez użytkownika.
+    \item \textbf{Zaawansowane indeksowanie} -- B-tree, Hash, GIN (dla
+    JSON, tablic i pełnotekstu), GiST (dla danych geometrycznych i zakresów),
+    SP-GiST, BRIN (dla gigantycznych tabel czasoszeregowych), Bloom
+    (przez rozszerzenie). Wsparcie dla indeksów częściowych, funkcyjnych,
+    wielokolumnowych i pokrywających (\textit{covering} z \texttt{INCLUDE}).
+    \item \textbf{Rozszerzalność} -- użytkownik może definiować własne
+    typy, operatory, funkcje agregujące oraz pisać procedury w wielu
+    językach (PL/pgSQL, PL/Python, PL/Perl, PL/V8/JavaScript, PL/Tcl).
+    \item \textbf{Ekosystem rozszerzeń} -- PostGIS, TimescaleDB,
+    pgvector (wektory embeddingów LLM), pg\_trgm, pg\_partman,
+    pg\_stat\_statements, pgcrypto.
+    \item \textbf{Dojrzałość i stabilność} -- aktywny rozwój od blisko 40 lat,
+    silna społeczność, regularne wydania majorowe (raz w roku) wspierane
+    przez 5 lat.
+    \item \textbf{Licencja} -- liberalna, bez opłat licencyjnych i bez
+    ograniczeń dla użycia komercyjnego.
+\end{itemize}
+
+\subsection{Wady i ograniczenia}
+
+\begin{itemize}
+    \item \textbf{Brak natywnego shardingu} -- skalowanie horyzontalne
+    wymaga zewnętrznych narzędzi (Citus) lub shardingu na poziomie aplikacji.
+    \item \textbf{Narzut MVCC} -- każdy \texttt{UPDATE} tworzy nową wersję
+    wiersza zamiast modyfikować istniejącą, co generuje "śmieci"
+    (\textit{dead tuples}) i wymaga regularnego \texttt{VACUUM}. Na obciążeniach
+    z bardzo częstymi aktualizacjami może prowadzić do tzw.~\textit{table bloat}.
+    \item \textbf{Wysoki koszt połączenia} -- każde połączenie to osobny
+    proces systemowy (a nie lekki wątek jak w MySQL), z narzutem rzędu
+    kilku megabajtów RAM. W systemach z tysiącami klientów konieczny
+    jest pooler (\texttt{pgbouncer}).
+    \item \textbf{Opóźnienie replikacji asynchronicznej} -- przy dużym
+    obciążeniu zapisu replika może odstawać od master-a o kilka sekund,
+    co wymaga świadomego projektowania aplikacji (\textit{read-after-write
+    consistency}).
+    \item \textbf{Złożona administracja} -- bogactwo parametrów (ponad
+    300 ustawień w \texttt{postgresql.conf}) i mechanizmów (WAL,
+    checkpoint, autovacuum, statystyki planera) wymaga znaczącej wiedzy
+    operacyjnej w porównaniu do prostszych silników.
+    \item \textbf{Mniej dojrzałe narzędzia diagnostyczne niż Oracle/SQL~Server} --
+    mimo \texttt{pg\_stat\_statements}, \texttt{EXPLAIN (ANALYZE, BUFFERS)}
+    i rozszerzeń monitorujących, brakuje zintegrowanego środowiska
+    typu Oracle Enterprise Manager.
+    \item \textbf{Case-sensitivity nieokarowanych identyfikatorów} -- standardowo
+    PostgreSQL sprowadza nieokarowane identyfikatory do małych liter,
+    co bywa źródłem pomyłek przy migracjach z MS~SQL Server.
+\end{itemize}
+
+\subsection{Udogodnienia}
+
+PostgreSQL wyróżnia się szeregiem wygodnych funkcji zwiększających
+produktywność na co dzień:
+
+\begin{itemize}
+    \item \textbf{Rozbudowany SQL} -- funkcje okienkowe (\texttt{OVER},
+    \texttt{PARTITION BY}, \texttt{ROWS BETWEEN}), CTE (w tym rekurencyjne),
+    \texttt{LATERAL JOIN}, \texttt{GROUPING SETS}/\texttt{CUBE}/\texttt{ROLLUP},
+    \texttt{MERGE} (od wersji~15), \texttt{RETURNING} na \texttt{INSERT}/\texttt{UPDATE}/\texttt{DELETE}.
+    \item \textbf{JSON/JSONB} -- natywne typy dokumentowe, operatory ścieżkowe
+    (\texttt{->}, \texttt{->>}, \texttt{@>}, \texttt{jsonpath}) oraz indeksy
+    GIN pozwalające efektywnie filtrować po dowolnych polach dokumentu.
+    \item \textbf{Full-text search} -- wbudowane wyszukiwanie pełnotekstowe
+    z obsługą wielu języków (w tym polskiego przez \texttt{pg\_catalog.polish}),
+    tokenizacji, stop-words, steamingu i rankingu.
+    \item \textbf{LISTEN/NOTIFY} -- wbudowany mechanizm pub/sub bez zewnętrznego
+    brokera -- aplikacje mogą otrzymywać powiadomienia o zmianach w bazie
+    w czasie rzeczywistym.
+    \item \textbf{Narzędzia CLI/GUI} -- \texttt{psql} to jedno z najbogatszych
+    narzędzi CLI (wsparcie dla \texttt{\textbackslash d}, \texttt{\textbackslash timing},
+    \texttt{\textbackslash watch}, formatowanie wyników, podłączanie skryptów).
+    GUI obejmuje pgAdmin, DBeaver, DataGrip, pg\_activity.
+    \item \textbf{EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)} -- jedno
+    z najlepszych narzędzi do analizy planów wykonania w branży, pozwalające
+    diagnozować nie tylko typ operacji, ale też liczbę wierszy szacowanych
+    vs rzeczywistych, wykorzystanie buforów i rzeczywisty czas wykonania
+    per węzeł planu.
+    \item \textbf{Generated columns i partial indexes} -- kolumny obliczane
+    automatycznie (od wersji~12) oraz indeksy częściowe obejmujące tylko
+    wybrany podzbiór wierszy (\texttt{WHERE is\_active = TRUE}) --
+    zmniejszają koszt zapisu i rozmiar indeksu.
+\end{itemize}

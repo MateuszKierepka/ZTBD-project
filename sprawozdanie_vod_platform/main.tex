@@ -1,0 +1,161 @@
+\documentclass{template}
+\usepackage{graphicx}
+
+\title{Porównanie wydajności 4 SZBD na modelu platformy VOD} 
+\autorA{Mateusz Kierepka}
+\albumA{D/161208}
+\autorB{Jakub Kozieński}
+\albumB{D/161212}
+\grupa{CY2}
+
+\prowadzacyA{dr inż. Anna Plichta}
+\prowadzacyB{mgr inż. Szymon Szomiński}
+
+\renewcommand{\today}{kwiecień 2026}
+\begin{document}
+
+\maketitle
+\pagenumbering{gobble}
+\setcounter{tocdepth}{2}
+\tableofcontents
+\clearpage
+\pagenumbering{arabic}
+
+
+
+
+% -------------------------------------------------------
+\section{Cel i zakres pracy}
+Celem pracy jest porównanie wydajności czterech systemów zarządzania bazami danych:
+PostgreSQL, MySQL, MongoDB oraz Neo4j, na modelu danych platformy streamingowej VOD.
+
+\subsection{Hipoteza badawcza}
+Zastosowanie indeksów znacząco poprawia wydajność operacji SELECT kosztem
+spadku wydajności operacji INSERT i UPDATE.
+
+\subsection{Zakres porównania}
+Porównanie obejmuje cztery bazy danych uruchomione w środowisku Docker. Testy przeprowadzono na trzech wolumenach
+danych (small, medium, large) dla 24 scenariuszy CRUD podzielonych na
+kategorie INSERT, SELECT, UPDATE i DELETE.
+
+% -------------------------------------------------------
+\section{PostgreSQL}
+\input{chapters/02_postgres}
+
+
+% -------------------------------------------------------
+\section{MySQL}
+\subsection{Skalowalność}
+\subsection{Bezpieczeństwo}
+\subsection{Awaryjność}
+\subsection{Migracje}
+\subsection{Integracje}
+\subsection{Obszary biznesowe}
+\subsection{Zalety}
+\subsection{Wady i ograniczenia}
+\subsection{Udogodnienia}
+
+% -------------------------------------------------------
+\section{MongoDB}
+\subsection{Skalowalność}
+\subsection{Bezpieczeństwo}
+\subsection{Awaryjność}
+\subsection{Migracje}
+\subsection{Integracje}
+\subsection{Obszary biznesowe}
+\subsection{Zalety}
+\subsection{Wady i ograniczenia}
+\subsection{Udogodnienia}
+
+% -------------------------------------------------------
+\section{Neo4j}
+\subsection{Skalowalność}
+\subsection{Bezpieczeństwo}
+\subsection{Awaryjność}
+\subsection{Migracje}
+\subsection{Integracje}
+\subsection{Obszary biznesowe}
+\subsection{Zalety}
+\subsection{Wady i ograniczenia}
+\subsection{Udogodnienia}
+
+% -------------------------------------------------------
+\section{Opis zbioru danych}
+\subsection{Model relacyjny (PostgreSQL i MySQL)}
+\subsection{Model dokumentowy (MongoDB)}
+\subsection{Model grafowy (Neo4j)}
+\subsection{Dane półstrukturalne (JSON/JSONB)}
+\subsection{Generacja danych}
+
+% -------------------------------------------------------
+\section{Środowisko testowe}
+\input{chapters/07_environment}
+
+% -------------------------------------------------------
+\section{Ładowanie danych i indeksy}
+\subsection{Metody ładowania danych}
+\subsection{Typy indeksów i strategia indeksowania}
+
+% -------------------------------------------------------
+\section{Metodologia benchmarków}
+\subsection{Cold start i cachowanie}
+\subsection{Pipeline testowy}
+
+% -------------------------------------------------------
+\section{Scenariusze testowe}
+\input{chapters/10_scenarios}
+
+% -------------------------------------------------------
+\section{Analiza planów wykonania (EXPLAIN)}
+\input{chapters/11_explain}
+
+
+% -------------------------------------------------------
+\section{Testy wydajnościowe}
+\subsection{Wolumen small - 500 000 rekordów}
+\input{chapters/12_small}
+
+\subsection{Wolumen medium - 1 000 000 rekordów}
+\input{chapters/12_medium}
+
+\subsection{Wolumen large - 10 000 000 rekordów}
+\input{chapters/12_large}
+% -------------------------------------------------------
+
+
+\section{Analiza wyników i weryfikacja hipotezy}
+
+Hipoteza zakłada, że zastosowanie indeksów znacząco poprawia wydajność
+operacji SELECT kosztem spadku wydajności operacji INSERT i UPDATE.
+
+Poniższe heatmapy przedstawiają stosunek czasu wykonania z indeksami
+do czasu bez indeksów dla każdego scenariusza i każdej bazy danych.
+Kolor zielony oznacza że indeks przyspieszył operację (wartość poniżej 1.0),
+kolor czerwony że ją spowolnił (wartość powyżej 1.0).
+ 
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.0\textwidth]{charts/small/index_heatmap_small.png}
+    \caption{Mapa cieplna wpływu indeksów na wydajność -- wolumen small}
+\end{figure}
+ 
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.0\textwidth]{charts/medium/index_heatmap_medium.png}
+    \caption{Mapa cieplna wpływu indeksów na wydajność -- wolumen medium}
+\end{figure}
+ 
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.0\textwidth]{charts/large/index_heatmap_large.png}
+    \caption{Mapa cieplna wpływu indeksów na wydajność -- wolumen large}
+\end{figure}
+% -------------------------------------------------------
+\section{Podsumowanie}
+
+% -------------------------------------------------------
+\appendix
+\section{Dodatek -- pozostałe wykresy benchmarków}
+\input{chapters/appendix}
+
+\end{document}

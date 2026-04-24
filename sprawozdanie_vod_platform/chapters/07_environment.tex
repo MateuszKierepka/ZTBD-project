@@ -1,0 +1,148 @@
+\subsection{Docker Compose i konfiguracja silników}
+
+Środowisko testowe zostało sprowadzone do jednego pliku \texttt{docker-compose.yml}
+definiującego cztery izolowane kontenery -- po jednym na każdy z porównywanych silników
+bazodanowych. Pozwoliło to uzyskać pełną reprodukowalność (każde uruchomienie
+startuje z identycznego obrazu), czyste odseparowanie procesów (żaden silnik nie
+dzieli RAM-u innym) oraz jednolity interfejs startu i zatrzymania
+całego stosu jedną komendą \texttt{docker compose up}.
+
+Każdy kontener ma jawnie ustawiony limit pamięci (\texttt{deploy.resources.limits.memory})
+oraz własne, świadomie dobrane opcje tuningowe -- tak aby zapewnić porównywalne
+warunki pracy bez nieuczciwego faworyzowania żadnej z baz.
+Wszystkie kontenery udostępniają swoje porty
+(\texttt{5432}, \texttt{3306}, \texttt{27017}, \texttt{7687}+\texttt{7474}),
+dzięki czemu warstwa orkiestracji w Pythonie łączy się do nich przez \texttt{localhost}.
+Dane są utrzymywane  w czterech nazwanych wolumenach Docker (\texttt{postgres\_data},
+\texttt{mysql\_data}, \texttt{mongo\_data}, \texttt{neo4j\_data}), co pozwala zachować
+załadowaną bazę między kolejnymi uruchomieniami benchmarków.
+
+\subsubsection*{PostgreSQL 17}
+
+Kontener \texttt{ztbd-postgres} oparty o obraz \texttt{postgres:17} z limitem 2~GB
+RAM. Schemat bazy (12 tabel wraz z kluczami obcymi i kaskadami jest ładowany automatycznie przy pierwszym starcie
+kontenera, poprzez zamontowanie pliku \texttt{init.sql} w katalogu
+\texttt{/docker-entrypoint-initdb.d/}. Parametry uruchomieniowe silnika:
+
+\begin{lstlisting}[language=bash,basicstyle=\ttfamily\small]
+shared_buffers=512MB
+work_mem=16MB
+maintenance_work_mem=512MB
+effective_cache_size=1536MB
+wal_buffers=16MB
+checkpoint_completion_target=0.9
+max_wal_size=2GB
+synchronous_commit=off
+\end{lstlisting}
+
+\subsubsection*{MySQL 8.0}
+Kontener \texttt{ztbd-mysql} oparty o obraz \texttt{mysql:8.0}, również z limitem
+2~GB RAM i własnym \texttt{init.sql}. Parametry silnika InnoDB:
+
+\begin{lstlisting}[language=bash,basicstyle=\ttfamily\small]
+--innodb-buffer-pool-size=1073741824    (1 GB)
+--innodb-log-file-size=256M
+--innodb-flush-log-at-trx-commit=2
+--innodb-flush-method=O_DIRECT
+--innodb-doublewrite=0
+--innodb-change-buffering=all
+--bulk-insert-buffer-size=256M
+--local-infile=1
+--max-allowed-packet=256M
+--innodb-autoinc-lock-mode=2
+\end{lstlisting}
+
+
+\subsubsection*{MongoDB 8.0}
+
+Kontener \texttt{ztbd-mongo} oparty o obraz \texttt{mongo:8.0}, limit 2~GB RAM,
+port \texttt{27017}. Konfiguracja silnika WiredTiger sprowadza się do jednej,
+ale kluczowej opcji:
+
+\begin{lstlisting}[language=bash,basicstyle=\ttfamily\small]
+mongod --wiredTigerCacheSizeGB 1.2
+\end{lstlisting}
+
+\noindent 1.2~GB to 60\% limitu kontenera -- rozmiar cache silnika pamięciowego
+WiredTiger, w którym MongoDB trzyma skompresowane strony dokumentów i indeksów.
+Pozostałe 40\% pozostawione jest na procesy Mongo poza cache (połączenia, sortowanie,
+agregacje, heap). Schemat nie jest ładowany -- Mongo nie wymaga definicji kolekcji
+z góry, tworzą się one przy pierwszym zapisie.
+
+\subsubsection*{Neo4j 2026.02.2}
+
+Kontener \texttt{ztbd-neo4j} oparty o obraz \texttt{neo4j:2026.02.2} (najnowsza
+wersja z aktywną linią wsparcia) z doinstalowanym pluginem \textbf{APOC}.
+Ze wszystkich
+czterech baz Neo4j dostał \textbf{najwyższy limit pamięci -- 4~GB} -- ze względu
+na architekturę opartą o JVM, która wymaga osobnego budżetu na heap, osobnego
+na page cache plików bazy oraz osobnego na pamięć transakcyjną:
+
+\begin{lstlisting}[language=bash,basicstyle=\ttfamily\small]
+server.memory.heap.initial_size      = 1g
+server.memory.heap.max_size          = 1g
+server.memory.pagecache.size         = 1g
+dbms.memory.transaction.total.max    = 3g
+\end{lstlisting}
+
+
+% -------------------------------------------------------
+\subsection{Technologie i biblioteki}
+
+Warstwa orkiestracji (generowanie danych, ładowanie, benchmarki, \texttt{EXPLAIN},
+wizualizacja) została zaimplementowana w \textbf{Pythonie 3.12+}. Wybór Pythona
+wynika z dostępności natywnych, dojrzałych driverów do wszystkich czterech silników,
+bogatego ekosystemu narzędzi analitycznych (\texttt{pandas}, \texttt{matplotlib})
+oraz niskiego narzutu zapisu kodu -- zestaw 24~scenariuszy da się zwięźle wyrazić
+w języku wysokiego poziomu, bez zaciemniania logiki pomiaru ogólnikami języka.
+
+Cały projekt jest uruchamiany przez jeden punkt wejścia (\texttt{main.py}) udostępniający
+sześć komend CLI zbudowanych na module \texttt{argparse}: \texttt{generate},
+\texttt{load}, \texttt{benchmark}, \texttt{explain}, \texttt{visualize} oraz
+\texttt{run-all} (pełny pipeline 8-krokowy: generowanie~$\rightarrow$~ładowanie
+bez indeksów~$\rightarrow$~benchmarki~$\rightarrow$~\texttt{EXPLAIN}~$\rightarrow$~ładowanie
+z indeksami~$\rightarrow$~benchmarki z indeksami~$\rightarrow$~\texttt{EXPLAIN} z
+indeksami~$\rightarrow$~wizualizacja).
+
+\subsubsection*{Drivery bazodanowe}
+
+\begin{itemize}
+    \item \textbf{psycopg 3} -- PostgreSQL. Najnowszy driver, obsługujący operacje asynchroniczne  
+    protokół \texttt{COPY FROM STDIN} strumieniowo,
+    co jest kluczowe dla wydajnego ładowania danych.
+    \item \textbf{PyMySQL} -- MySQL. Driver napisany w czystym Pythonie (bez zależności na
+    \texttt{mysqlclient} wymagającym kompilacji); wspiera \texttt{LOAD DATA LOCAL INFILE}
+    poprzez flagę \texttt{local\_infile=True} w \texttt{connect()}.
+    \item \textbf{PyMongo} -- MongoDB. Oficjalny driver do MongoDB; wspiera
+    \texttt{insert\_many(ordered=False)} (kontynuacja po błędach duplikatów) oraz
+    korzystanie z zaawansowanych zapytań typu \texttt{aggregate}.
+    \item \textbf{neo4j} (oficjalny driver Pythonowy) -- Neo4j. Komunikacja przez
+    protokół Bolt na porcie 7687; kluczowe jest tu wykorzystywanie jednej sesji
+    (\texttt{driver.session()}) dla wielu operacji -- żeby uniknąć narzutu połączeń TCP przy każdym batchu.
+\end{itemize}
+
+\subsubsection*{Generowanie danych}
+
+Generator danych (\texttt{src/generators/data\_generator.py}) opiera się na
+bibliotece \textbf{Faker} z \textbf{ustalonym seedem 42}.
+Stały seed gwarantuje pełną powtarzalność -- każde wywołanie
+\texttt{python main.py generate --volume small} produkuje identyczny
+zestaw plików CSV, co jest niezbędne dla rzetelności porównania (wszystkie cztery bazy
+dostają dokładnie te same dane wejściowe). Wyjściem są pliki CSV
+(po jednym na tabelę), które każdy z czterech loaderów czyta niezależnie
+i transformuje do swojej natywnej reprezentacji.
+
+\subsubsection*{Analiza i wizualizacja}
+
+Warstwa analityczna korzysta z trzech standardowych bibliotek:
+
+\begin{itemize}
+    \item \textbf{pandas} -- wczytywanie plików CSV z wynikami, agregacje
+    (\texttt{groupby} po scenariuszu, bazie, wariancie indeksów), obliczanie
+    mediany, min i max z 3 triali.
+    \item \textbf{NumPy} -- operacje macierzowe przy liczeniu heatmap.
+    \item \textbf{matplotlib} (backend \texttt{Agg}) -- generowanie wykresów PNG
+    bez wymagania GUI.
+\end{itemize}
+
+

@@ -1,0 +1,1131 @@
+\subsection{INSERT (I1--I6)}
+
+Grupa scenariuszy INSERT obejmuje sześć wariantów wstawiania danych -- od pojedynczego
+rekordu z powiązaniami, przez masowe ładowanie paczek rekordów, aż po wstawianie złożonych struktur
+hierarchicznych. Scenariusze różnią się
+wolumenem wstawianych danych oraz stopniem powiązań między rekordami, co pozwala
+porównać efektywność mechanizmów masowego ładowania w każdym z silników (COPY,
+multi-row INSERT, \texttt{insertMany}, \texttt{UNWIND + CALL IN TRANSACTIONS}) oraz
+koszt utrzymania spójności relacyjnej i referencyjnej przy zapisie.
+
+\subsubsection{I1: Rejestracja użytkownika}
+
+Rejestracja nowego użytkownika platformy -- w ramach jednej operacji tworzony
+jest rekord użytkownika, jego domyślny profil oraz aktywna subskrypcja w planie
+Standard. Scenariusz testuje koszt wstawienia powiązanych rekordów w trzech
+różnych tabelach/kolekcjach/węzłach grafu oraz utrzymania ich spójności
+(relacja 1-1 users→subscription, 1-N users→profiles).
+
+\textbf{PostgreSQL}
+\begin{lstlisting}[language=SQL]
+INSERT INTO users (email, password_hash, first_name, last_name,
+    date_of_birth, country_code, status, created_at, updated_at)
+VALUES (%s, '$2b$12$benchmark', 'Bench', 'User',
+    '1990-01-01', 'PL', 'active', NOW(), NOW())
+RETURNING user_id;
+
+INSERT INTO profiles (user_id, name, maturity_rating, language, created_at)
+VALUES (%s, 'Main', 'ALL', 'pl', NOW());
+
+INSERT INTO subscriptions (user_id, plan_name, price_monthly, max_streams,
+    max_resolution, status, start_date, auto_renew, created_at)
+VALUES (%s, 'Standard', 43.99, 2, '1080p', 'active', CURRENT_DATE, TRUE, NOW());
+\end{lstlisting}
+
+\textbf{MySQL}
+\begin{lstlisting}[language=SQL]
+INSERT INTO users (email, password_hash, first_name, last_name,
+    date_of_birth, country_code, status, created_at, updated_at)
+VALUES (%s, '$2b$12$benchmark', 'Bench', 'User',
+    '1990-01-01', 'PL', 'active', NOW(), NOW());
+
+INSERT INTO profiles (user_id, name, maturity_rating, language, created_at)
+VALUES (%s, 'Main', 'ALL', 'pl', NOW());
+
+INSERT INTO subscriptions (user_id, plan_name, price_monthly, max_streams,
+    max_resolution, status, start_date, auto_renew, created_at)
+VALUES (%s, 'Standard', 43.99, 2, '1080p', 'active', CURDATE(), TRUE, NOW());
+\end{lstlisting}
+
+\textbf{MongoDB}
+\begin{lstlisting}[language=Python]
+db.users.insertOne({
+    _id: <uid>,
+    email: <email>, password_hash: "$2b$12$benchmark",
+    first_name: "Bench", last_name: "User",
+    date_of_birth: "1990-01-01", country_code: "PL",
+    status: "active",
+    created_at: "2025-01-01 00:00:00",
+    updated_at: "2025-01-01 00:00:00",
+    profiles: [{
+        profile_id: <uid * 10>, name: "Main", is_kids: false,
+        maturity_rating: "ALL", language: "pl",
+        created_at: "2025-01-01 00:00:00"
+    }],
+    subscription: {
+        subscription_id: <uid * 10>, plan_name: "Standard",
+        price_monthly: 43.99, max_streams: 2, max_resolution: "1080p",
+        status: "active", start_date: "2025-01-01", auto_renew: true
+    }
+});
+\end{lstlisting}
+
+\textbf{Neo4j}
+\begin{lstlisting}[language=SQL]
+CREATE (u:User {user_id: $uid, email: $email,
+    first_name: 'Bench', last_name: 'User',
+    country_code: 'PL', status: 'active',
+    created_at: '2025-01-01 00:00:00'})
+CREATE (p:Profile {profile_id: $pid, name: 'Main',
+    is_kids: false, maturity_rating: 'ALL', language: 'pl'})
+CREATE (sub:Subscription {subscription_id: $sid,
+    plan_name: 'Standard', price_monthly: 43.99,
+    max_streams: 2, max_resolution: '1080p',
+    status: 'active', start_date: '2025-01-01', auto_renew: true})
+CREATE (u)-[:HAS_PROFILE]->(p)
+CREATE (u)-[:HAS_SUBSCRIPTION]->(sub);
+\end{lstlisting}
+
+
+\subsubsection{I2: Bulk import ocen}
+
+Masowe wczytanie dużej paczki ocen (10k / 100k / 500k w zależności od wolumenu).
+Mierzy najbardziej efektywną ścieżkę ładowania danych w każdej z baz: COPY
+w PostgreSQL, wielowierszowy INSERT IGNORE w MySQL, insert\_many w MongoDB
+oraz UNWIND + CALL IN TRANSACTIONS w Neo4j. Testuje przepustowość masowego
+zapisu z eliminacją powtórzeń po unikalnej parze (profile\_id, content\_id).
+
+\textbf{PostgreSQL}
+\begin{lstlisting}[language=SQL]
+CREATE TEMP TABLE _stage_ratings (
+    profile_id BIGINT, content_id BIGINT, score INT,
+    review_text TEXT, created_at TIMESTAMP, updated_at TIMESTAMP
+) ON COMMIT DROP;
+
+COPY _stage_ratings (profile_id, content_id, score,
+    review_text, created_at, updated_at) FROM STDIN;
+
+INSERT INTO ratings (profile_id, content_id, score,
+    review_text, created_at, updated_at)
+SELECT profile_id, content_id, score,
+    review_text, created_at, updated_at FROM _stage_ratings
+ON CONFLICT (profile_id, content_id) DO NOTHING;
+\end{lstlisting}
+
+\textbf{MySQL}
+\begin{lstlisting}[language=SQL]
+-- batch po 5000 wierszy
+INSERT IGNORE INTO ratings (profile_id, content_id, score,
+    review_text, created_at, updated_at)
+VALUES (%s, %s, %s, %s, %s, %s), ... ;
+\end{lstlisting}
+
+\textbf{MongoDB}
+\begin{lstlisting}[language=Python]
+-- batch po 5000 dokumentow
+db.ratings.insertMany([
+    { _id: <id>, profile_id: <pid>, content_id: <cid>, score: <1..10>,
+      review_text: "", created_at: "2037-12-31 00:00:00",
+      updated_at: "2037-12-31 00:00:00" }, ...
+], { ordered: false });
+\end{lstlisting}
+
+\textbf{Neo4j}
+\begin{lstlisting}[language=SQL]
+-- batch po 25 000, z wewnetrznym TRANSACTIONS OF 2000 ROWS
+UNWIND $rows AS r
+CALL (r) {
+    MATCH (p:Profile {profile_id: r.profile_id})
+    MATCH (c:Content {content_id: r.content_id})
+    CREATE (p)-[:RATED {score: r.score, rated_at: r.rated_at}]->(c)
+} IN TRANSACTIONS OF 2000 ROWS;
+\end{lstlisting}
+
+
+\subsubsection{I3: Dodanie serialu z pełnym drzewem}
+
+Dodanie nowego serialu wraz z pełnym hierarchicznym drzewem zależności:
+treść (content) → 3 sezony → po 10 odcinków w każdym sezonie, plus 10 relacji
+z osobami (reżyser, scenarzysta, aktorzy). Pokazuje koszt tworzenia silnie
+powiązanych, zagnieżdżonych struktur: normalizacja w SQL (4 tabele + tabela
+łącząca), zagnieżdżony dokument w Mongo oraz wieloetapowe CREATE + MATCH w Cypher.
+
+\textbf{PostgreSQL}
+\begin{lstlisting}[language=SQL]
+INSERT INTO content (title, description, type, release_date,
+    maturity_rating, genres, avg_rating, popularity_score,
+    country_of_origin, original_language, is_active, metadata, created_at)
+VALUES ('Benchmark Series', 'Test', 'series', '2025-01-01',
+    '16+', 'Drama,Thriller', 0, 0, 'PL', 'pl', TRUE, '{...}'::jsonb, NOW())
+RETURNING content_id;
+
+-- dla sezonow 1..3:
+INSERT INTO seasons (content_id, season_number, title, release_date)
+VALUES (%s, %s, %s, '2025-01-01') RETURNING season_id;
+
+-- dla odcinkow 1..10:
+INSERT INTO episodes (season_id, episode_number, title,
+    description, duration_minutes, release_date, video_url)
+VALUES (%s, %s, %s, 'Test episode', 45, '2025-01-01',
+    'https://cdn.example.com/test.mp4');
+
+-- dla 10 osob:
+INSERT INTO content_people (content_id, person_id, role,
+    character_name, billing_order)
+VALUES (%s, %s, %s, %s, %s)
+ON CONFLICT DO NOTHING;
+\end{lstlisting}
+
+\textbf{MySQL}
+\begin{lstlisting}[language=SQL]
+INSERT INTO content (...) VALUES ('Benchmark Series', ..., '{...}', NOW());
+-- analogicznie jak w PostgreSQL, bez RETURNING (uzywa lastrowid)
+INSERT INTO seasons (...) VALUES (...);
+INSERT INTO episodes (...) VALUES (...);
+INSERT IGNORE INTO content_people (content_id, person_id, role,
+    character_name, billing_order) VALUES (%s, %s, %s, %s, %s);
+\end{lstlisting}
+
+\textbf{MongoDB}
+\begin{lstlisting}[language=Python]
+db.content.insertOne({
+    _id: <cid>, title: "Benchmark Series", type: "series",
+    release_date: "2025-01-01", maturity_rating: "16+",
+    genres: ["Drama", "Thriller"], avg_rating: 0, is_active: true,
+    cast: [ { person_id, first_name, last_name, role: "actor",
+              character_name, billing_order }, ... ],
+    seasons: [
+        { season_id, season_number, title, release_date,
+          episodes: [ { episode_id, episode_number, title,
+                        duration_minutes: 45, release_date }, ... ]
+        }, ...
+    ]
+});
+\end{lstlisting}
+
+\textbf{Neo4j}
+\begin{lstlisting}[language=SQL]
+CREATE (c:Content {content_id: $cid, title: 'Benchmark Series',
+    type: 'series', maturity_rating: '16+',
+    avg_rating: 0, is_active: true, created_at: '2025-01-01 00:00:00'})
+WITH c
+UNWIND range(1, 3) AS sn
+CREATE (s:Season {season_id: $cid * 100 + sn, season_number: sn})
+CREATE (c)-[:HAS_SEASON]->(s)
+WITH s, sn
+UNWIND range(1, 10) AS en
+CREATE (e:Episode {episode_id: $cid * 1000 + sn * 100 + en,
+    episode_number: en, duration_minutes: 45})
+CREATE (s)-[:HAS_EPISODE]->(e);
+
+UNWIND $pids AS pid
+MATCH (p:Person {person_id: pid})
+MATCH (c:Content {content_id: $cid})
+CREATE (p)-[:ACTED_IN {character_name: 'Test',
+    billing_order: pid % 10}]->(c);
+\end{lstlisting}
+
+
+\subsubsection{I4: Batch insert płatności}
+
+Hurtowe wstawienie paczki płatności (1k / 10k / 50k) bez sprawdzania
+powtórzeń -- czysty pomiar zimnego wstawiania rekordów z prostą relacją
+do istniejących subskrypcji. Każda baza używa swojego najszybszego mechanizmu batchowego
+(COPY, multi-row INSERT, insert\_many, UNWIND+CREATE).
+
+\textbf{PostgreSQL}
+\begin{lstlisting}[language=SQL]
+COPY payments (subscription_id, amount, currency,
+    payment_method, transaction_id, status, paid_at, created_at)
+FROM STDIN;
+\end{lstlisting}
+
+\textbf{MySQL}
+\begin{lstlisting}[language=SQL]
+-- batch po 5000
+INSERT INTO payments (subscription_id, amount, currency,
+    payment_method, transaction_id, status, paid_at, created_at)
+VALUES (%s, %s, %s, %s, %s, %s, %s, %s), ... ;
+\end{lstlisting}
+
+\textbf{MongoDB}
+\begin{lstlisting}[language=Python]
+-- batch po 5000
+db.payments.insertMany([
+    { _id: <id>, subscription_id, amount, currency: "PLN",
+      payment_method, transaction_id, status: "completed",
+      paid_at: "2025-06-15 12:00:00",
+      created_at: "2025-06-15 12:00:00" }, ...
+], { ordered: false });
+\end{lstlisting}
+
+\textbf{Neo4j}
+\begin{lstlisting}[language=SQL]
+-- batch po 5000
+UNWIND $rows AS r
+MATCH (sub:Subscription {subscription_id: r.subscription_id})
+CREATE (pay:Payment {payment_id: r.payment_id,
+    amount: r.amount, currency: r.currency,
+    payment_method: r.payment_method,
+    status: r.status, paid_at: r.paid_at})
+CREATE (sub)-[:HAS_PAYMENT]->(pay);
+\end{lstlisting}
+
+
+\subsubsection{I5: Oceny z przeliczeniem średniej}
+
+Kombinowana operacja: wstawienie paczki ocen (500 / 5k / 25k) dla losowo
+wybranej treści, po czym przeliczenie i zapisanie zaktualizowanej średniej
+avg\_rating tej treści. Mierzy łączny koszt INSERT + agregacja AVG + UPDATE.
+
+\textbf{PostgreSQL}
+\begin{lstlisting}[language=SQL]
+INSERT INTO ratings (profile_id, content_id, score,
+    review_text, created_at, updated_at)
+VALUES (%s, %s, %s, %s, %s, %s)
+ON CONFLICT (profile_id, content_id) DO NOTHING;
+
+UPDATE content SET avg_rating = COALESCE(
+    (SELECT AVG(score) FROM ratings WHERE content_id = %s), 0)
+WHERE content_id = %s;
+\end{lstlisting}
+
+\textbf{MySQL}
+\begin{lstlisting}[language=SQL]
+-- batch po 5000
+INSERT IGNORE INTO ratings (profile_id, content_id, score,
+    review_text, created_at, updated_at)
+VALUES (%s, %s, %s, %s, %s, %s), ... ;
+
+UPDATE content SET avg_rating = COALESCE(
+    (SELECT AVG(score) FROM ratings WHERE content_id = %s), 0)
+WHERE content_id = %s;
+\end{lstlisting}
+
+\textbf{MongoDB}
+\begin{lstlisting}[language=Python]
+db.ratings.insertMany([ ... ], { ordered: false });
+
+db.ratings.aggregate([
+    { $match: { content_id: <cid> } },
+    { $group: { _id: null, avg: { $avg: "$score" } } }
+]);
+
+db.content.updateOne(
+    { _id: <cid> },
+    { $set: { avg_rating: <avg> } }
+);
+\end{lstlisting}
+
+\textbf{Neo4j}
+\begin{lstlisting}[language=SQL]
+-- batch po 5000
+UNWIND $rows AS r
+MATCH (p:Profile {profile_id: r.profile_id})
+MATCH (c:Content {content_id: r.content_id})
+CREATE (p)-[:RATED {score: r.score,
+    created_at: '2025-06-15 12:00:00'}]->(c);
+
+MATCH (:Profile)-[r:RATED]->(c:Content {content_id: $cid})
+WITH c, avg(r.score) AS avgScore
+SET c.avg_rating = avgScore;
+\end{lstlisting}
+
+
+\subsubsection{I6: Import osób z powiązaniami}
+
+Import paczki osób (200 / 1k / 5k) wraz z powiązaniem każdej z nich relacją
+"actor" z losowo wybraną treścią. Testuje dwuetapowe ładowanie: najpierw same
+encje, następnie relacje -- istotne dla grafu (Neo4j wymaga MATCH po istniejących węzłach przed
+utworzeniem krawędzi) oraz dla modelu zagnieżdżonego w Mongo (dołączenie
+do tablicy cast wewnątrz dokumentu treści).
+
+\textbf{PostgreSQL}
+\begin{lstlisting}[language=SQL]
+COPY people (person_id, first_name, last_name, birth_date,
+    bio, photo_url, nationality) FROM STDIN;
+
+INSERT INTO content_people (content_id, person_id, role,
+    character_name, billing_order)
+VALUES (%s, %s, %s, %s, %s)
+ON CONFLICT DO NOTHING;
+\end{lstlisting}
+
+\textbf{MySQL}
+\begin{lstlisting}[language=SQL]
+-- batch po 5000
+INSERT INTO people (person_id, first_name, last_name,
+    birth_date, bio, photo_url, nationality)
+VALUES (%s, %s, %s, %s, %s, %s, %s), ... ;
+
+-- batch po 5000
+INSERT IGNORE INTO content_people (content_id, person_id, role,
+    character_name, billing_order)
+VALUES (%s, %s, %s, %s, %s), ... ;
+\end{lstlisting}
+
+\textbf{MongoDB}
+\begin{lstlisting}[language=Python]
+db.content.bulkWrite([
+    { updateOne: {
+        filter: { _id: <cid> },
+        update: { $push: { cast: {
+            person_id: <pid>, first_name, last_name,
+            role: "actor", character_name, billing_order
+        } } }
+    }},
+    ...
+], { ordered: false });
+\end{lstlisting}
+
+\textbf{Neo4j}
+\begin{lstlisting}[language=SQL]
+-- batch po 5000: tworzenie osob
+UNWIND $rows AS r
+CREATE (:Person {person_id: r.person_id,
+    first_name: r.first_name, last_name: r.last_name,
+    birth_date: r.birth_date, nationality: r.nationality});
+
+-- batch po 5000: relacje
+UNWIND $rows AS r
+MATCH (p:Person {person_id: r.person_id})
+MATCH (c:Content {content_id: r.content_id})
+CREATE (p)-[:ACTED_IN {character_name: r.character_name,
+    billing_order: r.billing_order}]->(c);
+\end{lstlisting}
+
+
+% -------------------------------------------------------
+\subsection{SELECT (S1--S6)}
+% -------------------------------------------------------
+
+Grupa scenariuszy SELECT obejmuje typowe zapytania odczytu występujące w platformie
+VOD -- od szybkich zapytań listujących z sortowaniem, przez złożone agregacje 
+z filtrem zakresu dat oraz  wyszukiwanie pełnotekstowe, aż po zapytania grafowe
+silnie obciążające JOIN-y. Zestaw jest dobrany tak, aby pokazać
+różnice między bazami w trzech wymiarach: szybkości prostych odczytów po kluczu
+głównym, kosztu agregacji i JOIN-ów oraz efektywności indeksów wtórnych i pełnotekstowych.
+
+\subsubsection{S1: Strona główna}
+
+Typowe zapytanie strony głównej serwisu VOD -- zwraca 20 najbardziej popularnych,
+aktywnych treści z gatunku Action, posortowanych malejąco po popularity\_score.
+Testuje filtrowanie po zagnieżdżonym polu (genres) + sort + limit oraz odczyt
+pola z dokumentu JSON (metadata.studio).
+
+\textbf{PostgreSQL}
+\begin{lstlisting}[language=SQL]
+SELECT content_id, title, genres, popularity_score, avg_rating,
+       metadata->>'studio' AS studio
+FROM content
+WHERE is_active = TRUE AND genres LIKE '%Action%'
+ORDER BY popularity_score DESC
+LIMIT 20;
+\end{lstlisting}
+
+\textbf{MySQL}
+\begin{lstlisting}[language=SQL]
+SELECT content_id, title, genres, popularity_score, avg_rating,
+       metadata->>'$.studio' AS studio
+FROM content
+WHERE is_active = TRUE AND genres LIKE '%Action%'
+ORDER BY popularity_score DESC
+LIMIT 20;
+\end{lstlisting}
+
+\textbf{MongoDB}
+\begin{lstlisting}[language=Python]
+db.content.find(
+    { is_active: true, genres: "Action" },
+    { title: 1, genres: 1, popularity_score: 1,
+      avg_rating: 1, "metadata.studio": 1 }
+).sort({ popularity_score: -1 }).limit(20);
+\end{lstlisting}
+
+\textbf{Neo4j}
+\begin{lstlisting}[language=SQL]
+MATCH (c:Content)-[:HAS_GENRE]->(g:Genre {name: 'Action'})
+WHERE c.is_active = true
+RETURN c.content_id, c.title, c.popularity_score, c.avg_rating
+ORDER BY c.popularity_score DESC
+LIMIT 20;
+\end{lstlisting}
+
+
+\subsubsection{S2: Filtrowanie kolaboratywne}
+
+Rekomendacje w oparciu o filtrowanie kolaboratywne -- znajdź profile oglądające
+te same treści co wybrany profil, a następnie zwróć 10 treści najczęściej
+oglądanych przez tę podobną grupę, których użytkownik jeszcze nie oglądał.
+Scenariusz silnie obciąża JOIN-y po watch\_history i jest naturalnym testem
+przewagi grafu (Neo4j).
+
+\textbf{PostgreSQL / MySQL}
+\begin{lstlisting}[language=SQL]
+WITH similar_profiles AS (
+    SELECT DISTINCT wh2.profile_id
+    FROM watch_history wh1
+    JOIN watch_history wh2
+        ON wh1.content_id = wh2.content_id
+        AND wh1.profile_id <> wh2.profile_id
+    WHERE wh1.profile_id = %s
+    LIMIT 50
+)
+SELECT c.content_id, c.title, COUNT(*) AS score
+FROM watch_history wh
+JOIN content c ON wh.content_id = c.content_id
+WHERE wh.profile_id IN (SELECT profile_id FROM similar_profiles)
+  AND wh.content_id NOT IN (
+      SELECT content_id FROM watch_history WHERE profile_id = %s
+  )
+GROUP BY c.content_id, c.title
+ORDER BY score DESC
+LIMIT 10;
+\end{lstlisting}
+
+\textbf{MongoDB}
+\begin{lstlisting}[language=Python]
+watched = db.watch_history.distinct("content_id", { profile_id: <pid> });
+
+similar = db.watch_history.distinct("profile_id",
+    { content_id: { $in: watched[:50] },
+      profile_id: { $ne: <pid> } })[:50];
+
+db.watch_history.aggregate([
+    { $match: { profile_id: { $in: similar },
+                content_id: { $nin: watched } } },
+    { $group: { _id: "$content_id", score: { $sum: 1 } } },
+    { $sort: { score: -1 } },
+    { $limit: 10 },
+    { $lookup: { from: "content", localField: "_id",
+                 foreignField: "_id", as: "content" } }
+]);
+\end{lstlisting}
+
+\textbf{Neo4j}
+\begin{lstlisting}[language=SQL]
+MATCH (p:Profile {profile_id: $pid})-[:WATCHED]->(c:Content)
+      <-[:WATCHED]-(similar:Profile)
+WHERE similar <> p
+WITH p, similar, COUNT(c) AS shared
+ORDER BY shared DESC LIMIT 50
+MATCH (similar)-[:WATCHED]->(rec:Content)
+WHERE NOT EXISTS { (p)-[:WATCHED]->(rec) }
+RETURN rec.content_id, rec.title, COUNT(*) AS score
+ORDER BY score DESC LIMIT 10;
+\end{lstlisting}
+
+
+\subsubsection{S3: TOP 100 według liczby ocen w okresie}
+
+Ranking 100 treści o największej liczbie ocen wystawionych po określonej dacie
+odcięcia, wraz ze średnią oceną. Mierzy agregację GROUP BY z filtrem zakresu
+dat oraz JOIN z treścią w celu pobrania tytułu. Klasyczne zapytanie analityczne
+typu "co jest ostatnio na topie".
+
+\textbf{PostgreSQL / MySQL}
+\begin{lstlisting}[language=SQL]
+SELECT c.content_id, c.title, COUNT(*) AS rating_count,
+       AVG(r.score) AS avg_score
+FROM ratings r
+JOIN content c ON r.content_id = c.content_id
+WHERE r.created_at >= '2025-06-01'
+GROUP BY c.content_id, c.title
+ORDER BY rating_count DESC
+LIMIT 100;
+\end{lstlisting}
+
+\textbf{MongoDB}
+\begin{lstlisting}[language=Python]
+db.ratings.aggregate([
+    { $match: { created_at: { $gte: "2025-06-01" } } },
+    { $group: { _id: "$content_id",
+                rating_count: { $sum: 1 },
+                avg_score: { $avg: "$score" } } },
+    { $sort: { rating_count: -1 } },
+    { $limit: 100 },
+    { $lookup: { from: "content", localField: "_id",
+                 foreignField: "_id", as: "content" } }
+]);
+\end{lstlisting}
+
+\textbf{Neo4j}
+\begin{lstlisting}[language=SQL]
+MATCH ()-[r:RATED]->(c:Content)
+WHERE r.rated_at >= '2025-06-01'
+RETURN c.content_id, c.title,
+       COUNT(r) AS rating_count, avg(r.score) AS avg_score
+ORDER BY rating_count DESC
+LIMIT 100;
+\end{lstlisting}
+
+
+\subsubsection{S4: Wyszukiwanie pełnotekstowe po tytule}
+
+Wyszukiwanie treści po fragmencie tytułu. Wariant bez indeksów wymusza pełny
+skan, wariant z indeksami korzysta z wyspecjalizowanych struktur pełnotekstowych
+(GIN+pg\_trgm, FULLTEXT, \$text, db.index.fulltext) -- pozwala porównać zysk
+z indeksu tekstowego między silnikami.
+
+\textbf{PostgreSQL}
+\begin{lstlisting}[language=SQL]
+SELECT content_id, title, popularity_score,
+       metadata->>'tags' AS tags
+FROM content
+WHERE title ILIKE '%Interface%'
+ORDER BY popularity_score DESC
+LIMIT 20;
+\end{lstlisting}
+
+\textbf{MySQL}
+\begin{lstlisting}[language=SQL]
+SELECT content_id, title, popularity_score,
+       metadata->>'$.tags' AS tags
+FROM content
+WHERE title LIKE '%Interface%'
+ORDER BY popularity_score DESC
+LIMIT 20;
+\end{lstlisting}
+
+\textbf{MongoDB}
+\begin{lstlisting}[language=Python]
+-- z indeksem full-text ($text):
+db.content.find(
+    { $text: { $search: "Interface" } },
+    { score: { $meta: "textScore" },
+      title: 1, popularity_score: 1, "metadata.tags": 1 }
+).sort({ score: { $meta: "textScore" } }).limit(20);
+
+-- bez indeksu (regex):
+db.content.find(
+    { title: { $regex: /Interface/i } },
+    { title: 1, popularity_score: 1, "metadata.tags": 1 }
+).sort({ popularity_score: -1 }).limit(20);
+\end{lstlisting}
+
+\textbf{Neo4j}
+\begin{lstlisting}[language=SQL]
+-- z indeksem full-text:
+CALL db.index.fulltext.queryNodes('content_title_ft', 'Interface')
+YIELD node AS c, score
+RETURN c.content_id, c.title, c.popularity_score
+ORDER BY c.popularity_score DESC
+LIMIT 20;
+
+-- bez indeksu:
+MATCH (c:Content)
+WHERE c.title CONTAINS 'Interface'
+RETURN c.content_id, c.title, c.popularity_score
+ORDER BY c.popularity_score DESC
+LIMIT 20;
+\end{lstlisting}
+
+
+\subsubsection{S5: Historia oglądania profilu}
+
+Ostatnie 50 pozycji historii oglądania danego profilu, wzbogacone o tytuł i typ
+treści. Klasyczne zapytanie ekranu "Kontynuuj oglądanie" -- sort malejąco
+po started\_at.
+
+\textbf{PostgreSQL / MySQL}
+\begin{lstlisting}[language=SQL]
+SELECT wh.watch_id, c.title, c.type, wh.started_at,
+       wh.progress_percent, wh.completed
+FROM watch_history wh
+JOIN content c ON wh.content_id = c.content_id
+WHERE wh.profile_id = %s
+ORDER BY wh.started_at DESC
+LIMIT 50;
+\end{lstlisting}
+
+\textbf{MongoDB}
+\begin{lstlisting}[language=Python]
+db.watch_history.aggregate([
+    { $match: { profile_id: <pid> } },
+    { $sort: { started_at: -1 } },
+    { $limit: 50 },
+    { $lookup: { from: "content", localField: "content_id",
+                 foreignField: "_id", as: "content" } },
+    { $unwind: "$content" },
+    { $project: { "content.title": 1, "content.type": 1,
+                  started_at: 1, progress_percent: 1, completed: 1 } }
+]);
+\end{lstlisting}
+
+\textbf{Neo4j}
+\begin{lstlisting}[language=SQL]
+MATCH (p:Profile {profile_id: $pid})-[w:WATCHED]->(c:Content)
+RETURN c.title, c.type, w.started_at,
+       w.progress_percent, w.completed
+ORDER BY w.started_at DESC
+LIMIT 50;
+\end{lstlisting}
+
+
+\subsubsection{S6: Filmografia osoby}
+
+Pełna filmografia wybranej osoby -- wszystkie treści powiązane z nią dowolną
+rolą (actor / director / writer), posortowane od najnowszej. W grafie
+realizowane przez wzorzec zmiennej etykiety relacji, w Mongo przez indeks
+na "cast.person\_id".
+
+\textbf{PostgreSQL / MySQL}
+\begin{lstlisting}[language=SQL]
+SELECT c.content_id, c.title, c.type, c.release_date,
+       cp.role, cp.character_name
+FROM content_people cp
+JOIN content c ON cp.content_id = c.content_id
+WHERE cp.person_id = %s
+ORDER BY c.release_date DESC;
+\end{lstlisting}
+
+\textbf{MongoDB}
+\begin{lstlisting}[language=Python]
+db.content.find(
+    { "cast.person_id": <person_id> },
+    { title: 1, type: 1, release_date: 1, "cast.$": 1 }
+).sort({ release_date: -1 });
+\end{lstlisting}
+
+\textbf{Neo4j}
+\begin{lstlisting}[language=SQL]
+MATCH (p:Person {person_id: $pid})-[r]->(c:Content)
+WHERE type(r) IN ['ACTED_IN', 'DIRECTED', 'WROTE']
+RETURN c.content_id, c.title, c.type, c.release_date,
+       type(r) AS role, r.character_name
+ORDER BY c.release_date DESC;
+\end{lstlisting}
+
+
+% -------------------------------------------------------
+\subsection{UPDATE (U1--U6)}
+% -------------------------------------------------------
+
+Grupa scenariuszy UPDATE obejmuje sześć wariantów modyfikacji istniejących danych --
+od najprostszej aktualizacji pojedynczego rekordu po kluczu głównym, przez 
+przeliczenie pola z agregatu, aż po masowe aktualizacje setek tysięcy wierszy po filtrze
+niebędącym kluczem głównym. Zestaw pozwala zweryfikować drugą część hipotezy, czyli
+hipotetyczny spadek wydajności UPDATE przy obecności indeksów, a jednocześnie
+porównać modele danych w kontekście aktualizacji zagnieżdżonych pól (MongoDB)
+oraz właściwości krawędzi grafu (Neo4j).
+
+\subsubsection{U1: Aktualizacja postępu oglądania}
+
+Aktualizacja postępu oglądania pojedynczego wpisu historii (progress\_percent,
+completed). Typowa aktualizacja jednego rekordu po kluczu głównym -- mierzy czysty koszt
+dotarcia do rekordu i zapisu pary pól bez żadnych dodatkowych zależności.
+
+\textbf{PostgreSQL / MySQL}
+\begin{lstlisting}[language=SQL]
+UPDATE watch_history
+SET progress_percent = 75.50, completed = FALSE
+WHERE watch_id = %s;
+\end{lstlisting}
+
+\textbf{MongoDB}
+\begin{lstlisting}[language=Python]
+db.watch_history.updateOne(
+    { _id: <watch_id> },
+    { $set: { progress_percent: 75.50, completed: false } }
+);
+\end{lstlisting}
+
+\textbf{Neo4j}
+\begin{lstlisting}[language=SQL]
+MATCH (p:Profile {profile_id: $pid})-[w:WATCHED]->(c:Content)
+WITH w ORDER BY w.started_at DESC LIMIT 1
+SET w.progress_percent = 75.50, w.completed = false;
+\end{lstlisting}
+
+
+\subsubsection{U2: Przeliczenie średniej oceny}
+
+Przeliczenie i zapis średniej oceny (avg\_rating) dla jednej treści na podstawie
+wszystkich rekordów tabeli ratings przypisanych do tej treści. Mierzy koszt
+agregacji AVG + pojedynczego UPDATE dla różnych modeli danych.
+
+\textbf{PostgreSQL}
+\begin{lstlisting}[language=SQL]
+UPDATE content SET avg_rating = COALESCE(
+    (SELECT AVG(score)::DECIMAL(3,2) FROM ratings
+     WHERE content_id = %s), 0)
+WHERE content_id = %s;
+\end{lstlisting}
+
+\textbf{MySQL}
+\begin{lstlisting}[language=SQL]
+UPDATE content SET avg_rating = COALESCE(
+    (SELECT AVG(score) FROM ratings
+     WHERE content_id = %s), 0)
+WHERE content_id = %s;
+\end{lstlisting}
+
+\textbf{MongoDB}
+\begin{lstlisting}[language=Python]
+db.ratings.aggregate([
+    { $match: { content_id: <cid> } },
+    { $group: { _id: null, avg: { $avg: "$score" } } }
+]);
+
+db.content.updateOne(
+    { _id: <cid> },
+    { $set: { avg_rating: <avg> } }
+);
+\end{lstlisting}
+
+\textbf{Neo4j}
+\begin{lstlisting}[language=SQL]
+MATCH (:Profile)-[r:RATED]->(c:Content {content_id: $cid})
+WITH c, avg(r.score) AS avgScore
+SET c.avg_rating = avgScore;
+\end{lstlisting}
+
+
+\subsubsection{U3: Masowa zmiana planu subskrypcji}
+
+Masowe przepisanie wszystkich aktywnych subskrypcji z planu Basic na Standard
+w jednej operacji. Test bulk-update po filtrze bez klucza głównego -- pokazuje
+zachowanie silnika przy równoczesnej modyfikacji wielu wierszy.
+
+\textbf{PostgreSQL / MySQL}
+\begin{lstlisting}[language=SQL]
+UPDATE subscriptions
+SET plan_name = 'Standard', price_monthly = 43.99,
+    max_streams = 2, max_resolution = '1080p'
+WHERE status = 'active' AND plan_name = 'Basic';
+\end{lstlisting}
+
+\textbf{MongoDB}
+\begin{lstlisting}[language=Python]
+db.users.updateMany(
+    { "subscription.status": "active",
+      "subscription.plan_name": "Basic" },
+    { $set: {
+        "subscription.plan_name": "Standard",
+        "subscription.price_monthly": 43.99,
+        "subscription.max_streams": 2,
+        "subscription.max_resolution": "1080p"
+    } }
+);
+\end{lstlisting}
+
+\textbf{Neo4j}
+\begin{lstlisting}[language=SQL]
+MATCH (s:Subscription)
+WHERE s.status = 'active' AND s.plan_name = 'Basic'
+CALL (s) {
+    SET s.plan_name = 'Standard', s.price_monthly = 43.99,
+        s.max_streams = 2, s.max_resolution = '1080p'
+} IN TRANSACTIONS OF 1000 ROWS;
+\end{lstlisting}
+
+
+\subsubsection{U4: Aktualizacja danych użytkownika}
+
+Aktualizacja danych kontaktowych pojedynczego użytkownika (email + telefon +
+updated\_at). Prosta aktualizacja jednego rekordu po user\_id -- przy wariancie z indeksami
+unikalny indeks na email ma wpływ na koszt zapisu.
+
+\textbf{PostgreSQL / MySQL}
+\begin{lstlisting}[language=SQL]
+UPDATE users
+SET email = %s, phone = '+48 111 222 333', updated_at = NOW()
+WHERE user_id = %s;
+\end{lstlisting}
+
+\textbf{MongoDB}
+\begin{lstlisting}[language=Python]
+db.users.updateOne(
+    { _id: <uid> },
+    { $set: {
+        email: "updated_<uid>@bench.com",
+        phone: "+48 111 222 333",
+        updated_at: "2025-06-15 12:00:00"
+    } }
+);
+\end{lstlisting}
+
+\textbf{Neo4j}
+\begin{lstlisting}[language=SQL]
+MATCH (u:User {user_id: $uid})
+SET u.email = $email;
+\end{lstlisting}
+
+
+\subsubsection{U5: Oznaczenie treści jako nieaktywnej}
+
+Oznaczenie jednej treści jako nieaktywnej (is\_active = false) -- operacja
+typu "soft delete". Minimalna aktualizacja jednego rekordu po kluczu głównym na kolumnie
+często występującej w warunkach filtrów.
+
+\textbf{PostgreSQL / MySQL}
+\begin{lstlisting}[language=SQL]
+UPDATE content SET is_active = FALSE WHERE content_id = %s;
+\end{lstlisting}
+
+\textbf{MongoDB}
+\begin{lstlisting}[language=Python]
+db.content.updateOne(
+    { _id: <cid> },
+    { $set: { is_active: false } }
+);
+\end{lstlisting}
+
+\textbf{Neo4j}
+\begin{lstlisting}[language=SQL]
+MATCH (c:Content {content_id: $cid})
+SET c.is_active = false;
+\end{lstlisting}
+
+
+\subsubsection{U6: Masowa aktualizacja wskaźnika popularności}
+
+Przeliczenie popularity\_score dla wszystkich treści w bazie na podstawie
+formuły: total\_views · 0.0001 + avg\_rating · 5 + liczba\_ocen · 0.1.
+Typowa operacja batchowa -- testuje koszt agregacji (GROUP BY / aggregate /
+pattern grafu) w połączeniu z masowym UPDATE po całej kolekcji.
+
+\textbf{PostgreSQL}
+\begin{lstlisting}[language=SQL]
+UPDATE content
+SET popularity_score = (
+    total_views * 0.0001 +
+    avg_rating * 5 +
+    COALESCE(rc.cnt, 0) * 0.1
+)
+FROM (
+    SELECT content_id, COUNT(*) AS cnt
+    FROM ratings GROUP BY content_id
+) rc
+WHERE rc.content_id = content.content_id;
+\end{lstlisting}
+
+\textbf{MySQL}
+\begin{lstlisting}[language=SQL]
+UPDATE content c
+JOIN (
+    SELECT content_id, COUNT(*) AS cnt
+    FROM ratings GROUP BY content_id
+) rc ON rc.content_id = c.content_id
+SET c.popularity_score = (
+    c.total_views * 0.0001 +
+    c.avg_rating * 5 +
+    rc.cnt * 0.1
+);
+\end{lstlisting}
+
+\textbf{MongoDB}
+\begin{lstlisting}[language=Python]
+db.ratings.aggregate([
+    { $group: { _id: "$content_id", cnt: { $sum: 1 } } }
+]);
+
+db.content.bulkWrite([
+    { updateOne: {
+        filter: { _id: <cid> },
+        update: { $set: { popularity_score:
+            round(total_views*0.0001 + avg_rating*5 + cnt*0.1, 2) } }
+    } },
+    ...
+], { ordered: false });
+\end{lstlisting}
+
+\textbf{Neo4j}
+\begin{lstlisting}[language=SQL]
+MATCH (c:Content)
+CALL (c) {
+    OPTIONAL MATCH (:Profile)-[r:RATED]->(c)
+    WITH c, avg(r.score) AS avgScore, count(r) AS ratingCount
+    SET c.popularity_score = (
+        c.total_views * 0.0001 + c.avg_rating * 5 + ratingCount * 0.1
+    )
+} IN TRANSACTIONS OF 500 ROWS;
+\end{lstlisting}
+
+
+% -------------------------------------------------------
+\subsection{DELETE (D1--D6)}
+% -------------------------------------------------------
+
+Grupa scenariuszy DELETE obejmuje sześć wariantów usuwania rekordów -- od lekkiego
+usunięcia pojedynczego wpisu po kluczu złożonym, przez
+usunięcie rekordu z pełną kaskadą zależności, aż po masowe czyszczenie danych po
+ filtrze zakresu. Scenariusze pokazują różnice między mechanizmami kaskady
+(\texttt{FK ON DELETE CASCADE} w SQL, aplikacyjne \texttt{deleteMany} w MongoDB,
+\texttt{DETACH DELETE} w Neo4j) oraz wpływ indeksów na koszt wyszukiwania rekordów
+przeznaczonych do usunięcia.
+
+\subsubsection{D1: Usunięcie treści z kaskadą}
+
+Usunięcie pojedynczej treści wraz z pełną kaskadą zależności: historia
+oglądania, "moja lista", oceny, sezony, odcinki, obsada. W SQL dzieje się to
+automatycznie dzięki FK ON DELETE CASCADE, w Mongo kaskadę wykonuje aplikacja
+(4x deleteMany/deleteOne), w Neo4j użyto DETACH DELETE w dwóch krokach.
+
+\textbf{PostgreSQL / MySQL}
+\begin{lstlisting}[language=SQL]
+DELETE FROM content WHERE content_id = %s;
+-- kaskada na watch_history, my_list, ratings,
+-- seasons, episodes, content_people przez FK ON DELETE CASCADE
+\end{lstlisting}
+
+\textbf{MongoDB}
+\begin{lstlisting}[language=Python]
+db.watch_history.deleteMany({ content_id: <cid> });
+db.my_list.deleteMany({ content_id: <cid> });
+db.ratings.deleteMany({ content_id: <cid> });
+db.content.deleteOne({ _id: <cid> });
+\end{lstlisting}
+
+\textbf{Neo4j}
+\begin{lstlisting}[language=SQL]
+MATCH (c:Content {content_id: $cid})
+OPTIONAL MATCH (c)-[:HAS_SEASON]->(s:Season)-[:HAS_EPISODE]->(e:Episode)
+DETACH DELETE e, s;
+
+MATCH (c:Content {content_id: $cid})
+DETACH DELETE c;
+\end{lstlisting}
+
+
+\subsubsection{D2: Usunięcie profilu z historią}
+
+Usunięcie pojedynczego profilu wraz z kaskadą wszystkich jego aktywności --
+historia oglądania, "moja lista" oraz wystawione oceny. Scenariusz zbliżony do
+D1, ale działa na bardziej rozproszonych relacjach (1 profil → N wpisów
+w trzech różnych tabelach/kolekcjach).
+
+\textbf{PostgreSQL / MySQL}
+\begin{lstlisting}[language=SQL]
+DELETE FROM profiles WHERE profile_id = %s;
+-- kaskada: watch_history, my_list, ratings przez FK ON DELETE CASCADE
+\end{lstlisting}
+
+\textbf{MongoDB}
+\begin{lstlisting}[language=Python]
+db.watch_history.deleteMany({ profile_id: <pid> });
+db.my_list.deleteMany({ profile_id: <pid> });
+db.ratings.deleteMany({ profile_id: <pid> });
+db.users.updateOne(
+    { _id: <uid> },
+    { $pull: { profiles: { profile_id: <pid> } } }
+);
+\end{lstlisting}
+
+\textbf{Neo4j}
+\begin{lstlisting}[language=SQL]
+MATCH (p:Profile {profile_id: $pid})
+DETACH DELETE p;
+\end{lstlisting}
+
+
+\subsubsection{D3: Czyszczenie starych ocen}
+
+Masowe czyszczenie starych ocen -- usunięcie wszystkich rekordów ratings
+sprzed daty odcięcia. Test bulk-delete po filtrze zakresu dat (created\_at <
+cutoff). W Neo4j wymusza iteracyjne usuwanie po 10 000 krawędzi, żeby nie
+przekroczyć pamięci transakcji.
+
+\textbf{PostgreSQL / MySQL}
+\begin{lstlisting}[language=SQL]
+DELETE FROM ratings WHERE created_at < '2000-06-01';
+\end{lstlisting}
+
+\textbf{MongoDB}
+\begin{lstlisting}[language=Python]
+db.ratings.deleteMany({ created_at: { $lt: "2000-06-01" } });
+\end{lstlisting}
+
+\textbf{Neo4j}
+\begin{lstlisting}[language=SQL]
+-- petla po 10 000 rekordow do wyczerpania
+MATCH ()-[r:RATED]->()
+WHERE r.rated_at < $cutoff
+WITH r LIMIT 10000
+DELETE r
+RETURN count(*) AS deleted;
+\end{lstlisting}
+
+
+\subsubsection{D4: Usunięcie pozycji z listy}
+
+Usunięcie jednej pozycji z listy "Moja lista" wybranego profilu, po kluczu
+złożonym (profile\_id, content\_id). Najlżejszy scenariusz DELETE w zestawie -- usunięcie jednego rekordu
+po kluczu złożonym (profile\_id, content\_id).
+
+\textbf{PostgreSQL / MySQL}
+\begin{lstlisting}[language=SQL]
+DELETE FROM my_list
+WHERE profile_id = %s AND content_id = %s;
+\end{lstlisting}
+
+\textbf{MongoDB}
+\begin{lstlisting}[language=Python]
+db.my_list.deleteOne(
+    { profile_id: <pid>, content_id: <cid> }
+);
+\end{lstlisting}
+
+\textbf{Neo4j}
+\begin{lstlisting}[language=SQL]
+MATCH (p:Profile {profile_id: $pid})
+      -[r:ADDED_TO_LIST]->
+      (c:Content {content_id: $cid})
+DELETE r;
+\end{lstlisting}
+
+
+\subsubsection{D5: Usunięcie subskrypcji z płatnościami}
+
+Usunięcie pojedynczej subskrypcji wraz z kaskadą powiązanych płatności.
+W SQL rozwiązane przez FK ON DELETE CASCADE, w Mongo przez aplikacyjne
+deleteMany po subscription\_id, w Neo4j przez DETACH DELETE.
+
+\textbf{PostgreSQL / MySQL}
+\begin{lstlisting}[language=SQL]
+DELETE FROM subscriptions WHERE subscription_id = %s;
+-- kaskada na payments przez FK ON DELETE CASCADE
+\end{lstlisting}
+
+\textbf{MongoDB}
+\begin{lstlisting}[language=Python]
+db.payments.deleteMany({ subscription_id: <sid> });
+\end{lstlisting}
+
+\textbf{Neo4j}
+\begin{lstlisting}[language=SQL]
+MATCH (sub:Subscription {subscription_id: $sid})
+OPTIONAL MATCH (sub)-[:HAS_PAYMENT]->(pay:Payment)
+DETACH DELETE pay, sub;
+\end{lstlisting}
+
+
+\subsubsection{D6: Masowe usunięcie nieaktywnych użytkowników}
+
+Masowe usunięcie użytkowników oznaczonych jako status = 'deleted' z podanego
+zakresu ID (50 / 500 / 2000). Testuje bulk-delete po filtrze złożonym
+(status + zakres user\_id) -- łączy odczyt po indeksie statusu z operacją
+DELETE na wielu wierszach naraz.
+
+\textbf{PostgreSQL / MySQL}
+\begin{lstlisting}[language=SQL]
+DELETE FROM users
+WHERE status = 'deleted'
+  AND user_id >= %s AND user_id < %s;
+\end{lstlisting}
+
+\textbf{MongoDB}
+\begin{lstlisting}[language=Python]
+db.users.deleteMany({
+    status: "deleted",
+    _id: { $gte: <start_uid>, $lt: <start_uid + n> }
+});
+\end{lstlisting}
+
+\textbf{Neo4j}
+\begin{lstlisting}[language=SQL]
+MATCH (u:User)
+WHERE u.status = 'deleted'
+  AND u.user_id >= $start AND u.user_id < $end
+DETACH DELETE u;
+\end{lstlisting}
