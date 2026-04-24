@@ -1,0 +1,12 @@
+Zaktualizowana lista — 10 scenariuszy × 3 wolumeny = 30 wykresów
+#	Scenariusz	Kluczowa obserwacja
+I2	Bulk import ocen	Koszt indeksu przy INSERT (MongoDB 1718→5125 ms)
+I3	Dodanie serialu z drzewem	Przewaga modelu dokumentowego (MongoDB 0,8 ms)
+S2	Filtrowanie kolaboratywne	Przewaga grafu (Neo4j 15 ms vs MongoDB 3381 ms)
+S3	TOP 100 wg liczby ocen	Różnice między silnikami relacyjnymi
+S4	Wyszukiwanie pełnotekstowe	Przyspieszenie GIN/FULLTEXT (8–10×)
+U2	Przeliczenie średniej oceny	Hipoteza indeksowa — MongoDB 100→1,5 ms
+U3	Masowa zmiana planu	Kontrprzykład — indeks spowalnia UPDATE
+D1	Usunięcie treści z kaskadą	Kaskada FK vs aplikacyjna (MongoDB 1876→208 ms)
+D4	Usunięcie pozycji z listy	Indeks w MongoDB — 202→0,7 ms (290×)
+D6	Masowe usunięcie użytkowników	Najsilniejszy dowód hipotezy — PostgreSQL 30 058→10 ms (3000×)
