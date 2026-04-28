@@ -1,192 +1,254 @@
-MySQL to otwartoźródłowy relacyjny system zarządzania bazą danych rozwijany
-od 1995 roku, początkowo przez szwedzką firmę MySQL AB, a obecnie będący
-własnością Oracle Corporation. Obecna linia 8.0.x (stan na 2025~r.) oferuje
-pełną obsługę transakcji ACID, silnik składowania InnoDB jako domyślny oraz
-szeroką zgodność ze standardem SQL. MySQL jest dystrybuowany w dwóch wariantach
-licencyjnych: GPL (Community Edition, bezpłatna) oraz komercyjnym (Enterprise
-Edition, z dodatkowymi funkcjami bezpieczeństwa i narzędziami zarządzania).
-Ze względu na dominującą pozycję w ekosystemie LAMP oraz domyślne wsparcie
-ze strony platform takich jak WordPress czy Drupal, MySQL pozostaje jednym
-z najszerzej stosowanych silników relacyjnych na świecie.
+MySQL jest otwartoźródłowym, relacyjnym systemem zarządzania bazą danych,
+rozwijanym od 1995 roku, początkowo przez szwedzką firmę MySQL AB, a od 2010
+roku należącym do Oracle Corporation. Wersja 8.4 LTS (stan na kwiecień 2026~r.,
+przy równolegle rozwijanej linii Innovation 9.x) zapewnia pełne wsparcie dla
+transakcji ACID, domyślny silnik składowania InnoDB oraz dialekt SQL zgodny
+w znacznej części ze standardem. Kod źródłowy dostępny jest na licencji GPL
+w wariancie Community Edition, natomiast wersja Enterprise jest dystrybuowana
+komercyjnie i obejmuje dodatkowe komponenty, takie jak Thread Pool, Audit
+Plugin oraz MySQL Enterprise Backup. Ze względu na historyczną pozycję w stosie
+LAMP MySQL stanowi domyślny silnik bazodanowy dla popularnych systemów
+zarządzania treścią, w tym WordPress, Drupal i Joomla, oraz dla wielu platform
+e-commerce klasy małej i średniej.
 
 \subsection{Skalowalność}
 
-PostgreSQL dobrze radzi sobie z rosnącą ilością danych, przede wszystkim przez
-dodawanie zasobów do jednego serwera. Silnik potrafi efektywnie wykorzystać
-dużą ilość RAM, wiele rdzeni procesora i szybkie dyski. Zapytania mogą być
-wykonywane równolegle przez kilku pracowników jednocześnie, co szczególnie
-przyspiesza operacje na dużych zbiorach danych. Dostępne jest też wbudowane
-partycjonowanie tabel, czyli podział jednej dużej tabeli na mniejsze kawałki
-według zakresu dat, wartości lub klucza, dzięki czemu baza nie przeszukuje
-całej tabeli, tylko te partycje, które są potrzebne.
+W standardowych wdrożeniach MySQL skalowany jest pionowo, a kluczową rolę
+odgrywa w tym wypadku buffer pool silnika InnoDB -- wielowątkowy bufor stron
+danych, który przechowuje najczęściej używane strony tabel oraz indeksów
+w pamięci operacyjnej. Od wersji 8.0 dostępny jest mechanizm partycjonowania
+tabel obsługujący tryby \texttt{RANGE}, \texttt{LIST}, \texttt{HASH} oraz
+\texttt{KEY}, co umożliwia podział dużych tabel na fragmenty obsługiwane
+niezależnie. Model wątkowy obsługi połączeń, w przeciwieństwie do modelu
+procesowego, charakteryzuje się niskim narzutem pamięciowym -- pojedyncza
+instancja może obsługiwać kilka tysięcy aktywnych klientów. W przypadku
+bardzo dużej liczby połączeń stosuje się mechanizm Thread Pool dostępny
+w edycji Enterprise lub zewnętrzne rozwiązania, takie jak ProxySQL.
 
-Skalowanie horyzontalne, czyli rozbudowa przez dodawanie kolejnych serwerów,
-nie jest natywną cechą PostgreSQL. Można to osiągnąć przez replikację do
-serwerów odczytu lub przez zewnętrzne rozszerzenia jak Citus, które dodają
-automatyczny podział danych między węzły. Warto też pamiętać, że każde
-połączenie z bazą to osobny proces systemowy, więc przy dużej liczbie
-użytkowników zaleca się stosowanie pośredników jak PgBouncer.
+Skalowanie horyzontalne typowo realizowane jest poprzez asynchroniczną
+replikację typu źródło-replika, w której serwer główny zapisuje zmiany do
+dziennika binarnego, a repliki odtwarzają je niezależnie i obsługują operacje
+odczytu. Od wersji 8.0 dostępny jest mechanizm Group Replication, oparty na
+protokole konsensusu Paxos, zapewniający synchroniczną replikację pomiędzy
+węzłami klastra wraz z automatycznym wykrywaniem konfliktów. Funkcjonalność
+ta stanowi podstawę dla rozwiązania InnoDB Cluster, zapewniającego wysoką
+dostępność oraz automatyczny failover bez konieczności stosowania narzędzi
+zewnętrznych. Komponent MySQL Router pełni funkcję warstwy pośredniczącej,
+kierującej zapytania klienta do właściwych węzłów klastra. Pełen sharding
+nie jest natywną cechą silnika -- realizowany jest przy pomocy MySQL NDB
+Cluster, dedykowanego silnika składowania zaprojektowanego dla architektur
+shared-nothing, lub przy wykorzystaniu zewnętrznych rozwiązań, takich jak
+Vitess, opracowanego pierwotnie w firmie YouTube.
 
 \subsection{Bezpieczeństwo}
 
-PostgreSQL oferuje rozbudowaną kontrolę dostępu. To kto i skąd może się
-połączyć z bazą konfiguruje się w pliku \texttt{pg\_hba.conf}, gdzie definiuje
-się kombinacje bazy, użytkownika i adresu IP oraz metodę uwierzytelniania.
-Obsługiwane są hasła (domyślnie szyfrowane przez scram-sha-256), certyfikaty
-klienckie, Kerberos, LDAP i inne. Połączenie może być szyfrowane przez SSL/TLS.
+System uprawnień opiera się na kombinacji nazwy użytkownika oraz hosta lub
+podsieci, z której nawiązywane jest połączenie (\texttt{user@host}). Uprawnienia
+nadawane są instrukcjami \texttt{GRANT} oraz \texttt{REVOKE} na pięciu poziomach
+granularności: globalnym, bazy danych, tabeli, kolumny oraz procedury. Od wersji
+8.0 dostępny jest mechanizm ról, umożliwiający grupowanie uprawnień i ich
+zbiorcze przypisywanie użytkownikom. Domyślną wtyczką uwierzytelniania jest
+\texttt{caching\_sha2\_password}, zastępujący starszy mechanizm
+\texttt{mysql\_native\_password}. System obsługuje również uwierzytelnianie
+poprzez wtyczki PAM, LDAP oraz Kerberos, przy czym dwa ostatnie mechanizmy
+dostępne są wyłącznie w edycji Enterprise.
 
-Uprawnienia do obiektów bazodanowych zarządza się przez role, które mogą
-pełnić funkcję zarówno użytkowników jak i grup. Od wersji 9.5 dostępne jest
-też Row-Level Security, które pozwala filtrować wiersze zwracane przez zapytanie
-w zależności od tego, kto je wykonuje. Przydaje się to szczególnie w aplikacjach
-obsługujących wielu klientów na jednej instancji bazy.
+Komunikacja klient–serwer może być wymuszana wyłącznie przez kanał szyfrowany
+SSL/TLS, z opcjonalną weryfikacją certyfikatu klienta. Mechanizm Transparent
+Data Encryption (TDE) zapewnia szyfrowanie danych w spoczynku na poziomie
+tablespaces, dziennika redo log, dziennika undo log oraz dziennika binarnego.
+Klucze szyfrowania mogą być przechowywane w lokalnym keyringu lub w zewnętrznych
+systemach zarządzania kluczami, takich jak HashiCorp Vault, AWS KMS lub systemy
+zgodne ze standardem KMIP. Należy zaznaczyć, że MySQL nie posiada natywnego
+mechanizmu Row-Level Security -- filtrowanie wierszy w zależności od kontekstu
+użytkownika realizowane jest poprzez widoki z klauzulą \texttt{WITH CHECK
+OPTION} oraz zmienne sesyjne, bądź na poziomie warstwy aplikacyjnej.
 
 \subsection{Awaryjność}
 
-Podstawą trwałości danych jest mechanizm Write-Ahead Log (WAL). Każda zmiana
-trafia najpierw do dziennika, a dopiero potem do właściwych plików. Dzięki temu
-w przypadku awarii serwera baza po restarcie automatycznie odtwarza stan sprzed
-problemu i żadna zatwierdzona transakcja nie jest tracona.
+Trwałość danych w silniku InnoDB zapewniana jest przez parę dzienników:
+redo log, rejestrujący zmiany fizyczne wykorzystywane podczas odtwarzania
+po awarii, oraz undo log, przechowujący poprzednie wersje wierszy na potrzeby
+mechanizmu MVCC oraz operacji wycofywania transakcji. Każda modyfikacja jest
+zapisywana w redo log przed jej wprowadzeniem do tablespace, co eliminuje
+ryzyko utraty zatwierdzonych transakcji w przypadku nieoczekiwanego przerwania
+pracy serwera. Domyślna wartość parametru
+\texttt{innodb\_flush\_log\_at\_trx\_commit=1} gwarantuje pełną zgodność
+z modelem ACID kosztem dodatkowej operacji \texttt{fsync} przy każdym
+zatwierdzeniu transakcji. W wybranych wdrożeniach parametr ten obniżany
+jest świadomie do wartości 2 lub 0, w zamian za zwiększoną przepustowość
+operacji zapisu, przy akceptacji ryzyka utraty kilku ostatnich sekund
+zmian w przypadku awarii.
 
-Na bazie WAL działają mechanizmy replikacji i kopii zapasowych. Replikacja
-strumieniowa pozwala utrzymywać aktualną kopię bazy na osobnym serwerze,
-gotową do przejęcia ruchu w razie awarii. Point-in-Time Recovery umożliwia
-odtworzenie bazy do dowolnego momentu w przeszłości. Automatyczny failover
-realizuje się przez zewnętrzne narzędzia jak Patroni.
+Niezależnie od silnika składowania funkcjonuje binary log -- dziennik zmian
+operujący na poziomie instrukcji SQL lub pojedynczych wierszy, stanowiący
+podstawę zarówno mechanizmu replikacji, jak i Point-in-Time Recovery (PITR).
+Procedura PITR polega na odtworzeniu ostatniej kopii zapasowej oraz aplikacji
+fragmentu dziennika binarnego do wybranego momentu czasowego. Mechanizm
+InnoDB Cluster zapewnia automatyczny failover w czasie rzędu kilku sekund,
+bez wymogu stosowania narzędzi zewnętrznych. Tworzenie kopii zapasowych
+realizowane jest przy pomocy narzędzi \texttt{mysqldump} (zrzut logiczny),
+\texttt{mysqlpump} (zrzut logiczny w wariancie równoległym), MySQL Shell
+poprzez funkcję \texttt{util.dumpInstance()} oraz Percona XtraBackup,
+zapewniającego binarną kopię zapasową bez blokowania bazy.
 
 \subsection{Migracje}
 
-Do przenoszenia danych między instancjami PostgreSQL służą \texttt{pg\_dump}
-i \texttt{pg\_restore}, które tworzą przenośne zrzuty logiczne działające między
-różnymi wersjami. Przy aktualizacji wersji na tym samym serwerze można użyć
-\texttt{pg\_upgrade}, które nie przenosi danych, tylko aktualizuje struktury.
-Migrację z innych silników, na przykład z MySQL, ułatwia narzędzie pgloader.
+Klasycznym narzędziem migracyjnym jest \texttt{mysqldump}, którego sekwencyjny
+charakter pracy stanowi ograniczenie przy bazach o znacznym wolumenie. MySQL
+Shell, wykorzystujący funkcje \texttt{util.dumpInstance()} oraz
+\texttt{util.loadDump()}, realizuje eksport oraz import w sposób równoległy,
+co istotnie skraca czas operacji. Aktualizacja in-place pomiędzy kolejnymi
+wersjami od wydania 8.0 wzwyż realizowana jest praktycznie w trakcie restartu
+serwera -- mechanizm \texttt{mysql\_upgrade} został zintegrowany z procesem
+uruchamiania i odpowiada za automatyczną aktualizację słownika danych.
 
-Wersjonowanie schematu bazy, czyli zarządzanie kolejnymi zmianami struktury
-tabel, realizuje się przez zewnętrzne narzędzia jak Flyway lub Liquibase, albo
-przez mechanizmy wbudowane w frameworki aplikacyjne. Warto podkreślić, że
-PostgreSQL obsługuje transakcyjne DDL, co oznacza, że błędna migracja może
-zostać wycofana tak jak zwykła transakcja.
+Istotnym ograniczeniem jest brak transakcyjnego DDL. Instrukcje takie jak
+\texttt{ALTER TABLE}, \texttt{CREATE TABLE} czy \texttt{DROP INDEX} powodują
+niejawne zatwierdzenie bieżącej transakcji, w związku z czym wycofanie
+nieudanej migracji schematu poprzez \texttt{ROLLBACK} nie jest możliwe.
+W przypadku operacji \texttt{ALTER} na dużych tabelach produkcyjnych stosuje
+się narzędzia online, takie jak \texttt{pt-online-schema-change} z pakietu
+Percona Toolkit oraz \texttt{gh-ost} opracowane przez GitHub. Oba narzędzia
+tworzą kopię tabeli w tle, kopiują dane z mechanizmem ograniczania obciążenia
+replikacji, a następnie podmieniają nazwy w pojedynczej operacji
+\texttt{RENAME TABLE}. Wersjonowanie schematu typowo realizowane jest przy
+pomocy narzędzi Flyway, Liquibase lub mechanizmów migracyjnych wbudowanych
+w biblioteki ORM, takie jak Doctrine, Django ORM, ActiveRecord oraz Sequelize.
 
 \subsection{Integracje}
 
-PostgreSQL posiada sterowniki dla praktycznie każdego popularnego języka
-programowania i jest wspierany przez wszystkie główne frameworki ORM. Narzędzia
-do analizy danych i wizualizacji jak Tableau, Grafana czy Metabase mają natywne
-połączenia z PostgreSQL.
+MySQL udostępnia oficjalne sterowniki dla większości popularnych języków
+programowania, w tym MySQL Connector/J dla Javy, Connector/Python,
+Connector/NET oraz Connector/Node.js, a także liczne biblioteki społecznościowe,
+takie jak \texttt{mysqlclient}, \texttt{PyMySQL} czy \texttt{mysql2} dla Node.js.
+Wszystkie znaczące biblioteki ORM, w tym Hibernate, JPA, SQLAlchemy, Doctrine,
+ActiveRecord, Entity Framework, TypeORM oraz Prisma, oferują natywne wsparcie
+dla tego silnika. Dialekt SQL implementowany przez MySQL pozostaje na tyle
+zbliżony do standardu, że migracja zapytań pomiędzy silnikami zwykle wymaga
+jedynie niewielkich modyfikacji składniowych.
 
-Ciekawą funkcją są Foreign Data Wrappers (FDW), które pozwalają odpytywać
-zewnętrzne źródła danych, takie jak inne bazy czy pliki CSV, jakby były
-zwykłymi tabelami. PostgreSQL jest też dostępny jako usługa zarządzana na
-AWS, Google Cloud i Azure.
-
+W środowiskach chmurowych MySQL dostępny jest jako Amazon RDS, Amazon Aurora
+MySQL (kompatybilna implementacja z dedykowanym silnikiem składowania
+zapewniającym wyższą przepustowość), Google Cloud SQL oraz Azure Database
+for MySQL. Komponent MySQL HeatWave stanowi akcelerator analityczny działający
+w pamięci operacyjnej, dostępny w infrastrukturze Oracle Cloud oraz AWS,
+umożliwiający wykonywanie zapytań klasy OLAP bezpośrednio na danych
+transakcyjnych, bez konieczności replikowania ich do oddzielnej hurtowni.
+Integracja z narzędziami Business Intelligence -- Tableau, Power BI, Metabase,
+Grafana oraz Apache Superset -- realizowana jest poprzez standardowe
+sterowniki JDBC oraz ODBC.
 
 \subsection{Obszary biznesowe}
 
-MySQL jest szczególnie mocno zakorzeniony w zastosowaniach webowych i jest
-domyślnym wyborem dla wielu popularnych platform. Sprawdza się najlepiej
-w następujących obszarach:
+MySQL znajduje zastosowanie przede wszystkim w obszarach, w których ekosystem
+oprogramowania zakłada jego obecność jako rozwiązania domyślnego. Systemy
+zarządzania treścią, w tym WordPress, Drupal oraz Joomla, a także platformy
+e-commerce, takie jak Magento, PrestaShop oraz WooCommerce, korzystają z MySQL
+jako podstawowego backendu. Według statystyk W3Techs MySQL obsługuje ponad
+60\% witryn internetowych korzystających z relacyjnych baz danych. W segmencie
+e-commerce klasy małej i średniej decydującym czynnikiem pozostaje powszechna
+dostępność na hostingu współdzielonym oraz dojrzałość ekosystemu narzędziowego.
 
-\begin{itemize}
-    \item \textbf{Aplikacje webowe i CMS} -- WordPress, Drupal, Joomla oraz
-    większość popularnych platform e-commerce jak Magento czy PrestaShop
-    używa MySQL jako domyślnego backendu. Szacuje się, że MySQL napędza
-    ponad 60\% stron internetowych korzystających z relacyjnych baz danych.
-    \item \textbf{E-commerce} -- prostota konfiguracji, szeroka dostępność
-    hostingu i dojrzałość ekosystemu sprawiają, że MySQL jest pierwszym
-    wyborem dla sklepów internetowych małej i średniej skali.
-    \item \textbf{Systemy SaaS} -- dzięki modelowi wątkowemu i dobrej
-    wydajności przy dużej liczbie równoczesnych połączeń MySQL sprawdza się
-    w aplikacjach obsługujących wielu użytkowników jednocześnie.
-    \item \textbf{Startupy i projekty webowe} -- niska bariera wejścia,
-    ogromna baza poradników i gotowych rozwiązań oraz dostępność na
-    praktycznie każdym hostingu współdzielonym sprawiają, że MySQL
-    jest naturalnym pierwszym wyborem dla nowych projektów.
-    \item \textbf{Systemy analityki webowej} -- MySQL bywa stosowany
-    do przechowywania i analizy logów, statystyk odwiedzin i danych
-    behawioralnych użytkowników w zastosowaniach, gdzie nie jest wymagana
-    zaawansowana analityka.
-\end{itemize}
+W zastosowaniach SaaS model wątkowy obsługi połączeń oraz wydajność przy
+operacjach transakcyjnych sprawiają, że MySQL stanowi rozwiązanie odpowiednie
+dla aplikacji o dużej liczbie równoczesnych sesji. Wśród przedsiębiorstw
+wykorzystujących lub historycznie wykorzystujących MySQL w swojej infrastrukturze
+wymienić należy Facebook (przed migracją do własnego rozwiązania MyRocks),
+Booking.com, Uber, GitHub oraz Shopify. W wymienionych wdrożeniach silnik
+często bywa zmodyfikowany lub opakowany rozwiązaniami klasy Vitess, zapewniającymi
+sharding na masową skalę.
+
+W projektach typu startup oraz w dydaktyce decydującym argumentem pozostaje
+niska bariera wejścia, obszerna dokumentacja, rozbudowana baza materiałów
+edukacyjnych oraz powszechna dostępność hostingu, co czyni MySQL silnikiem
+relacyjnym o najszerszym zasięgu infrastrukturalnym.
 
 \subsection{Zalety}
 
-\begin{itemize}
-    \item \textbf{Prostota i niska bariera wejścia} -- MySQL jest łatwy
-    w instalacji i konfiguracji. Dostępny jest na praktycznie każdym
-    hostingu współdzielonym, co czyni go najbardziej dostępnym silnikiem
-    relacyjnym dla początkujących.
-    \item \textbf{Bardzo duży ekosystem} -- ogromna baza dokumentacji,
-    poradników, gotowych narzędzi i społeczności sprawia, że znalezienie
-    pomocy przy problemach jest łatwe.
-    \item \textbf{Model wątkowy} -- w przeciwieństwie do PostgreSQL każde
-    połączenie obsługiwane jest przez lekki wątek zamiast osobnego procesu,
-    co zmniejsza narzut pamięciowy przy dużej liczbie połączeń.
-    \item \textbf{Wysoka wydajność przy prostych zapytaniach} -- MySQL
-    jest zoptymalizowany pod kątem szybkich odczytów i prostych operacji
-    CRUD, co sprawdza się w typowych zastosowaniach webowych.
-    \item \textbf{MySQL InnoDB Cluster} -- wbudowane rozwiązanie wysokiej
-    dostępności z automatycznym failoverem bez potrzeby zewnętrznych narzędzi.
-    \item \textbf{Szeroka dostępność w chmurze} -- dostępny jako usługa
-    zarządzana na AWS, Google Cloud i Azure, a także w wariancie Aurora
-    oferującym znacznie wyższą wydajność przy zachowaniu kompatybilności.
-    \item \textbf{Kompatybilność} -- MySQL jest kompatybilny z wieloma
-    narzędziami i frameworkami, a jego dialekt SQL jest szeroko znany
-    wśród programistów.
-\end{itemize}
+Najistotniejszą zaletą MySQL jest dojrzałość ekosystemu, kształtowanego od
+ponad dwóch dekad. Obejmuje on rozbudowaną dokumentację, narzędzia
+diagnostyczne, biblioteki klienckie oraz szeroką społeczność użytkowników.
+Model wątkowy obsługi połączeń, w którym każda sesja realizowana jest przez
+lekki wątek zamiast osobnego procesu, zapewnia niski narzut pamięciowy
+nawet przy bardzo dużej liczbie aktywnych klientów -- jest to cecha istotnie
+odróżniająca MySQL od PostgreSQL.
+
+Silnik InnoDB jest zoptymalizowany pod typowe operacje CRUD i zapewnia wysoką
+przepustowość prostych zapytań, pod warunkiem że roboczy zbiór danych mieści
+się w buffer poolu. Wbudowany mechanizm InnoDB Cluster zapewnia wysoką
+dostępność z automatycznym failoverem bez konieczności stosowania narzędzi
+zewnętrznych, co stanowi istotne uproszczenie operacyjne w niewielkich
+zespołach. Dialekt SQL pozostaje zbliżony do standardu, co minimalizuje
+wymagania szkoleniowe wobec programistów. W środowiskach chmurowych MySQL
+dostępny jest jako usługa zarządzana w katalogach wszystkich głównych
+dostawców -- Amazon RDS, Aurora, Google Cloud SQL oraz Azure Database --
+co ułatwia migrację do modelu chmurowego.
+
+Dodatkowym, choć często niedocenianym atutem, jest powszechna dostępność
+MySQL na hostingu współdzielonym o niskim koszcie utrzymania, podczas gdy
+PostgreSQL na takich platformach pozostaje rzadkością. W projektach
+o ograniczonych budżetach infrastrukturalnych argument ten zachowuje
+istotne znaczenie.
 
 \subsection{Wady i ograniczenia}
 
-\begin{itemize}
-    \item \textbf{Słabsze wsparcie standardu SQL} -- MySQL historycznie
-    odchodzi od standardu SQL w wielu miejscach, co może powodować
-    problemy przy migracji zapytań między silnikami. Przykładem jest
-    domyślny tryb \texttt{ONLY\_FULL\_GROUP\_BY} wyłączony w starszych
-    wersjach, który pozwalał na niepoprawne zapytania GROUP BY.
-    \item \textbf{Brak transakcyjnego DDL} -- instrukcje \texttt{ALTER TABLE}
-    czy \texttt{CREATE TABLE} niejawnie zatwierdzają bieżącą transakcję,
-    co oznacza, że błędna migracja schematu nie może zostać wycofana
-    przez \texttt{ROLLBACK}.
-    \item \textbf{Ograniczona analityka} -- MySQL nie obsługuje wielu
-    zaawansowanych funkcji analitycznych SQL takich jak pełne wsparcie
-    dla funkcji okienkowych (do niedawna), \texttt{GROUPING SETS},
-    \texttt{CUBE} czy \texttt{ROLLUP}. PostgreSQL jest znacznie silniejszy
-    w zastosowaniach HTAP.
-    \item \textbf{Brak Row-Level Security} -- filtrowanie wierszy per
-    użytkownik musi być implementowane na poziomie aplikacji lub widoków,
-    co zwiększa złożoność systemów wielodostępnych.
-    \item \textbf{Słabsze typy danych} -- MySQL oferuje uboższy katalog
-    typów w porównaniu do PostgreSQL. Brakuje natywnych typów zakresowych,
-    tablic czy zaawansowanych typów geometrycznych bez zewnętrznych rozszerzeń.
-    \item \textbf{Właściciel korporacyjny} -- MySQL należy do Oracle,
-    co dla części organizacji jest czynnikiem ryzyka przy wyborze silnika
-    dla krytycznych systemów. Część zaawansowanych funkcji dostępna jest
-    wyłącznie w płatnej Enterprise Edition.
-    \item \textbf{Ograniczone indeksowanie} -- MySQL obsługuje B-tree,
-    Hash i FULLTEXT, ale brakuje zaawansowanych typów indeksów dostępnych
-    w PostgreSQL (GIN, GiST, BRIN), co ogranicza możliwości przy
-    wyszukiwaniu pełnotekstowym i danych przestrzennych.
-\end{itemize}
+Historyczna swoboda interpretacji standardu SQL stanowi źródło problemów
+przy migracjach do innych silników relacyjnych. Przed wersją 5.7 dopuszczano
+zapytania \texttt{GROUP BY} zawierające niezagregowane kolumny spoza klucza
+grupowania, co prowadziło do niedeterministycznych wyników. Tryb
+\texttt{ONLY\_FULL\_GROUP\_BY}, włączony domyślnie w nowszych wersjach,
+może być wyłączany w starszych wdrożeniach, ujawniając wówczas zapytania
+specyficzne wyłącznie dla MySQL.
+
+Brak transakcyjnego DDL stanowi istotne ograniczenie operacyjne -- nieudana
+migracja schematu pozostawia bazę w stanie częściowo zmodyfikowanym, bez
+możliwości automatycznego wycofania zmian. Funkcje analityczne języka SQL
+implementowane są ze znacznym opóźnieniem względem PostgreSQL: pełne wsparcie
+dla funkcji okienkowych zostało wprowadzone dopiero w wersji 8.0, podobnie
+wspólne wyrażenia tablicowe (CTE), natomiast pełna obsługa konstrukcji
+\texttt{GROUPING SETS}, \texttt{CUBE} oraz \texttt{ROLLUP} pozostaje
+ograniczona. Brak natywnego mechanizmu Row-Level Security wymusza
+implementację filtrowania wierszy na poziomie widoków lub aplikacji, co
+zwiększa złożoność systemów wielodzierżawnych.
+
+Katalog typów danych jest mniej rozbudowany niż w PostgreSQL -- nie są
+dostępne natywne typy zakresowe, tablicowe ani zaawansowane typy geometryczne
+poza zakresem oferowanym przez rozszerzenie spatial. Mechanizm indeksowania
+ogranicza się do indeksów B-tree, hash, FULLTEXT oraz R-tree, podczas gdy
+indeksy GIN, GiST oraz BRIN nie są obsługiwane. W kontekście biznesowym
+istotnym czynnikiem ryzyka pozostaje również własność korporacyjna -- silnik
+należy do Oracle Corporation, co skłania część organizacji do wyboru forków
+niezależnych, takich jak MariaDB lub Percona Server. Wiele zaawansowanych
+funkcji, w tym Thread Pool, MySQL Enterprise Audit oraz online schema diff,
+dostępnych jest wyłącznie w komercyjnej edycji Enterprise.
 
 \subsection{Udogodnienia}
 
-\begin{itemize}
-    \item \textbf{MySQL Workbench} -- oficjalne graficzne narzędzie do
-    administracji, projektowania schematów (wizualny edytor ERD), migracji
-    i profilowania zapytań. Dostępne na Windows, macOS i Linux.
-    \item \textbf{Narzędzia CLI} -- \texttt{mysql} (interaktywny klient),
-    \texttt{mysqldump} (eksport), \texttt{mysqlcheck} (weryfikacja tabel),
-    \texttt{mysqladmin} (administracja serwerem).
-    \item \textbf{EXPLAIN i query profiler} -- MySQL oferuje \texttt{EXPLAIN}
-    i \texttt{EXPLAIN ANALYZE} (od wersji 8.0) do analizy planów wykonania,
-    a także \texttt{performance\_schema} i \texttt{sys} schema do
-    monitorowania wydajności na poziomie zapytań, wątków i operacji I/O.
-    \item \textbf{JSON} -- od wersji 5.7 MySQL obsługuje natywny typ JSON
-    z operatorami ścieżkowymi (\texttt{->}, \texttt{->>}) i możliwością
-    tworzenia indeksów na wygenerowanych kolumnach opartych o pola JSON.
-    \item \textbf{Generowane kolumny} -- kolumny wyliczane automatycznie
-    na podstawie wyrażenia (wirtualne lub przechowywane), przydatne do
-    indeksowania fragmentów JSON lub wyrażeń obliczeniowych.
-    \item \textbf{Szeroka dostępność hostingu} -- MySQL jest dostępny
-    na praktycznie każdym hostingu współdzielonym i VPS, co czyni go
-    najbardziej dostępnym silnikiem relacyjnym pod względem infrastruktury.
-\end{itemize}
+MySQL Workbench stanowi oficjalne narzędzie graficzne, integrujące edytor
+diagramów ERD, wizualny konstruktor zapytań, mechanizm migracji schematu
+między silnikami oraz profiler zapytań. Aplikacja dostępna jest dla systemów
+Windows, macOS oraz Linux. W warstwie wiersza poleceń podstawowymi narzędziami
+są klient \texttt{mysql} z trybem REPL, \texttt{mysqldump} przeznaczony do
+eksportu danych, \texttt{mysqladmin} odpowiadający za zadania administracyjne
+oraz nowoczesna powłoka MySQL Shell, obsługująca języki SQL, JavaScript oraz
+Python, a także udostępniająca interfejs administracyjny dla mechanizmu
+InnoDB Cluster.
+
+Diagnostyka wydajności realizowana jest przy pomocy instrukcji \texttt{EXPLAIN}
+oraz \texttt{EXPLAIN ANALYZE} (od wersji 8.0), prezentujących plan wykonania
+wraz z rzeczywistymi statystykami, instrukcji \texttt{SHOW PROFILE} oraz
+schematów \texttt{performance\_schema} i \texttt{sys}. Drugi z wymienionych
+udostępnia gotowe widoki agregujące metryki niskopoziomowe w sposób przyjazny
+dla użytkownika, ułatwiając identyfikację zapytań o najwyższym koszcie
+wykonania. Generowane kolumny, dostępne w wariantach wirtualnym oraz
+przechowywanym, umożliwiają indeksowanie wyników wyrażeń lub fragmentów
+dokumentów JSON, co stanowi istotne udogodnienie z uwagi na fakt, że MySQL
+od wersji 5.7 obsługuje natywny typ \texttt{JSON} z operatorami ścieżkowymi
+(\texttt{->}, \texttt{->>}), nie wspiera jednak indeksowania pól JSON
+w sposób bezpośredni.
+
+Wymienione narzędzia funkcjonują w rozległym ekosystemie hostingowym,
+obejmującym platformy współdzielone o niskim koszcie utrzymania oraz wszystkie
+główne usługi chmurowe, co czyni MySQL silnikiem relacyjnym o najszerszej
+dostępności infrastrukturalnej.

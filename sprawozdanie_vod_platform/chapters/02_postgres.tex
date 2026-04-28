@@ -1,202 +1,226 @@
-PostgreSQL to otwartoźródłowy, obiektowo-relacyjny system zarządzania bazą danych
-(ORDBMS) rozwijany nieprzerwanie od 1986 roku (projekt POSTGRES na Uniwersytecie
-Kalifornijskim w Berkeley). Obecna linia 17.x (stan na 2025~r.) oferuje pełną
-zgodność z wieloma rozszerzeniami standardu SQL:2016, silnik transakcyjny oparty
-o MVCC oraz jeden z najbogatszych ekosystemów rozszerzeń spośród silników SQL.
-PostgreSQL jest dystrybuowany na liberalnej licencji PostgreSQL License
-(w duchu zbliżonym do BSD/MIT), co dopuszcza dowolne wykorzystanie komercyjne
-bez opłat licencyjnych.
-
-
+PostgreSQL jest otwartoźródłowym, obiektowo-relacyjnym systemem zarządzania
+bazą danych (ORDBMS), rozwijanym nieprzerwanie od 1986 roku, kiedy zainicjowany
+został projekt POSTGRES na Uniwersytecie Kalifornijskim w Berkeley. Aktualna
+linia 18.x (stan na kwiecień 2026~r.) implementuje znaczącą część standardu
+SQL:2016, a silnik transakcyjny oparty na mechanizmie MVCC umożliwia jednoczesny
+odczyt i zapis bez wzajemnego blokowania procesów. Kod źródłowy jest dystrybuowany
+na permisywnej licencji PostgreSQL License, zbliżonej w swoich założeniach do
+licencji BSD i MIT, co dopuszcza wykorzystanie komercyjne bez opłat licencyjnych.
 
 \subsection{Skalowalność}
- 
-PostgreSQL dobrze radzi sobie z rosnącą ilością danych, przede wszystkim przez
-dodawanie zasobów do jednego serwera. Silnik potrafi efektywnie wykorzystać
-dużą ilość RAM, wiele rdzeni procesora i szybkie dyski. Zapytania mogą być
-wykonywane równolegle przez kilku pracowników jednocześnie, co szczególnie
-przyspiesza operacje na dużych zbiorach danych. Dostępne jest też wbudowane
-partycjonowanie tabel, czyli podział jednej dużej tabeli na mniejsze kawałki
-według zakresu dat, wartości lub klucza, dzięki czemu baza nie przeszukuje
-całej tabeli, tylko te partycje, które są potrzebne.
- 
-Skalowanie horyzontalne, czyli rozbudowa przez dodawanie kolejnych serwerów,
-nie jest natywną cechą PostgreSQL. Można to osiągnąć przez replikację do
-serwerów odczytu lub przez zewnętrzne rozszerzenia jak Citus, które dodają
-automatyczny podział danych między węzły. Warto też pamiętać, że każde
-połączenie z bazą to osobny proces systemowy, więc przy dużej liczbie
-użytkowników zaleca się stosowanie pośredników jak PgBouncer.
- 
+
+Skalowanie pionowe stanowi naturalny model wzrostu wydajności w PostgreSQL.
+Silnik efektywnie wykorzystuje znaczne zasoby pamięci operacyjnej, wielordzeniowe
+procesory oraz nośniki o wysokiej przepustowości. Od wersji 9.6 obsługiwane jest
+równoległe wykonywanie zapytań, w którym agregacje, sekwencyjne skanowanie
+tabel oraz wybrane operacje złączenia rozdzielane są pomiędzy procesy robocze.
+Mechanizm deklaratywnego partycjonowania, dostępny od wersji 10, umożliwia
+podział tabel według zakresu wartości, listy lub funkcji haszującej, co pozwala
+planerowi zapytań eliminować partycje nieistotne dla danego predykatu.
+
+Skalowanie horyzontalne nie należy do natywnych cech systemu. Najczęściej
+realizowane jest poprzez replikację strumieniową umożliwiającą obsługę odczytów
+przez repliki, bądź przy wykorzystaniu rozszerzeń, takich jak Citus, które
+zapewniają rozproszenie danych pomiędzy węzłami klastra według wybranego klucza
+dystrybucji. Każde połączenie z bazą danych obsługiwane jest przez osobny
+proces systemu operacyjnego, co przy dużej liczbie klientów generuje znaczący
+narzut pamięciowy. W takich przypadkach standardowo stosuje się mechanizmy
+poolingu połączeń, takie jak PgBouncer lub pgcat.
+
 \subsection{Bezpieczeństwo}
- 
-PostgreSQL oferuje rozbudowaną kontrolę dostępu. To kto i skąd może się
-połączyć z bazą konfiguruje się w pliku \texttt{pg\_hba.conf}, gdzie definiuje
-się kombinacje bazy, użytkownika i adresu IP oraz metodę uwierzytelniania.
-Obsługiwane są hasła (domyślnie szyfrowane przez scram-sha-256), certyfikaty
-klienckie, Kerberos, LDAP i inne. Połączenie może być szyfrowane przez SSL/TLS.
- 
-Uprawnienia do obiektów bazodanowych zarządza się przez role, które mogą
-pełnić funkcję zarówno użytkowników jak i grup. Od wersji 9.5 dostępne jest
-też Row-Level Security, które pozwala filtrować wiersze zwracane przez zapytanie
-w zależności od tego, kto je wykonuje. Przydaje się to szczególnie w aplikacjach
-obsługujących wielu klientów na jednej instancji bazy.
- 
+
+Konfiguracja reguł dostępu odbywa się w pliku \texttt{pg\_hba.conf}, w którym
+definiowane są kombinacje bazy danych, użytkownika, podsieci źródłowej oraz
+metody uwierzytelniania. Hasła są domyślnie przechowywane w postaci skrótów
+SCRAM-SHA-256, a system obsługuje również uwierzytelnianie certyfikatem
+klienta, Kerberos, LDAP, PAM oraz uwierzytelnianie peer poprzez gniazdo
+domeny uniksowej. Komunikacja klient–serwer może być wymuszana wyłącznie
+przez kanał szyfrowany SSL/TLS, z opcjonalną weryfikacją certyfikatu serwera
+po stronie klienta.
+
+Uprawnienia są zarządzane przy pomocy ról, które pełnią jednocześnie funkcję
+użytkowników oraz grup, z możliwością dziedziczenia uprawnień pomiędzy nimi.
+Od wersji 9.5 dostępny jest mechanizm Row-Level Security, umożliwiający
+definiowanie polityk filtrowania wierszy w zależności od kontekstu sesji.
+Funkcjonalność ta znajduje zastosowanie w systemach wielodzierżawnych
+(multi-tenant), w których wielu klientów współdzieli tę samą tabelę, a izolacja
+danych musi być realizowana na poziomie silnika. Audyt operacji może zostać
+włączony poprzez rozszerzenie \texttt{pgaudit}, które rejestruje zdarzenia
+zgodnie z zdefiniowaną polityką.
+
 \subsection{Awaryjność}
- 
-Podstawą trwałości danych jest mechanizm Write-Ahead Log (WAL). Każda zmiana
-trafia najpierw do dziennika, a dopiero potem do właściwych plików. Dzięki temu
-w przypadku awarii serwera baza po restarcie automatycznie odtwarza stan sprzed
-problemu i żadna zatwierdzona transakcja nie jest tracona.
- 
-Na bazie WAL działają mechanizmy replikacji i kopii zapasowych. Replikacja
-strumieniowa pozwala utrzymywać aktualną kopię bazy na osobnym serwerze,
-gotową do przejęcia ruchu w razie awarii. Point-in-Time Recovery umożliwia
-odtworzenie bazy do dowolnego momentu w przeszłości. Automatyczny failover
-realizuje się przez zewnętrzne narzędzia jak Patroni.
- 
+
+Trwałość danych zapewnia mechanizm Write-Ahead Log (WAL). Każda modyfikacja
+zapisywana jest sekwencyjnie do dziennika transakcji jeszcze przed jej
+wprowadzeniem do plików danych, co umożliwia odtworzenie spójnego stanu po
+nieoczekiwanym przerwaniu pracy serwera. Domyślne wartości parametrów
+\texttt{synchronous\_commit=on} oraz \texttt{fsync=on} gwarantują, że
+zatwierdzenie transakcji następuje po fizycznym zapisie dziennika na nośniku.
+
+Na bazie mechanizmu WAL realizowana jest replikacja oraz tworzenie kopii
+zapasowych. Replikacja strumieniowa fizyczna kopiuje dziennik na repliki
+działające w trybie hot-standby, umożliwiając obsługę odczytów oraz
+mechanizm Point-in-Time Recovery, który pozwala odtworzyć stan bazy do
+dowolnego momentu w przeszłości. Replikacja logiczna, dostępna od wersji 10,
+operuje na poziomie pojedynczych zmian wierszy i pozwala na selektywne
+replikowanie wybranych tabel pomiędzy serwerami o różnych wersjach głównych.
+Automatyczny failover nie jest wbudowanym elementem silnika i realizowany
+jest przy pomocy zewnętrznych narzędzi, takich jak Patroni, repmgr lub
+\texttt{pg\_auto\_failover}, które koordynują wybór nowego węzła primary,
+zwykle przy współudziale systemu konsensusu (etcd, Consul).
+
 \subsection{Migracje}
- 
-Do przenoszenia danych między instancjami PostgreSQL służą \texttt{pg\_dump}
-i \texttt{pg\_restore}, które tworzą przenośne zrzuty logiczne działające między
-różnymi wersjami. Przy aktualizacji wersji na tym samym serwerze można użyć
-\texttt{pg\_upgrade}, które nie przenosi danych, tylko aktualizuje struktury.
-Migrację z innych silników, na przykład z MySQL, ułatwia narzędzie pgloader.
- 
-Wersjonowanie schematu bazy, czyli zarządzanie kolejnymi zmianami struktury
-tabel, realizuje się przez zewnętrzne narzędzia jak Flyway lub Liquibase, albo
-przez mechanizmy wbudowane w frameworki aplikacyjne. Warto podkreślić, że
-PostgreSQL obsługuje transakcyjne DDL, co oznacza, że błędna migracja może
-zostać wycofana tak jak zwykła transakcja.
- 
+
+Podstawowymi narzędziami migracyjnymi są \texttt{pg\_dump} oraz
+\texttt{pg\_restore}, generujące przenośne zrzuty logiczne w postaci skryptu
+SQL lub natywnego formatu binarnego. Format binarny umożliwia równoległe
+odtwarzanie danych, co istotnie skraca czas operacji w przypadku dużych baz.
+Aktualizacja silnika w trybie in-place realizowana jest przy pomocy narzędzia
+\texttt{pg\_upgrade}, które modyfikuje katalog systemowy oraz, opcjonalnie,
+tworzy dowiązania twarde do plików danych, eliminując konieczność ich kopiowania.
+Migracje z innych systemów, takich jak MySQL, SQLite czy Microsoft SQL Server,
+najczęściej przeprowadza się przy pomocy narzędzia \texttt{pgloader}, które
+automatyzuje mapowanie typów oraz konwersję kodowań.
+
+Wersjonowanie schematu typowo realizowane jest przez zewnętrzne narzędzia
+takie jak Flyway, Liquibase, Alembic (Python) lub mechanizmy migracyjne
+wbudowane w popularne biblioteki ORM. Istotną cechą PostgreSQL, odróżniającą
+go od części innych silników relacyjnych, jest pełne wsparcie dla
+transakcyjnego DDL -- instrukcje takie jak \texttt{ALTER TABLE} czy
+\texttt{CREATE INDEX} mogą zostać wykonane w obrębie tej samej transakcji
+co operacje na danych, a w przypadku błędu cała zmiana zostaje wycofana
+poprzez \texttt{ROLLBACK}.
+
 \subsection{Integracje}
- 
-PostgreSQL posiada sterowniki dla praktycznie każdego popularnego języka
-programowania i jest wspierany przez wszystkie główne frameworki ORM. Narzędzia
-do analizy danych i wizualizacji jak Tableau, Grafana czy Metabase mają natywne
-połączenia z PostgreSQL.
- 
-Ciekawą funkcją są Foreign Data Wrappers (FDW), które pozwalają odpytywać
-zewnętrzne źródła danych, takie jak inne bazy czy pliki CSV, jakby były
-zwykłymi tabelami. PostgreSQL jest też dostępny jako usługa zarządzana na
-AWS, Google Cloud i Azure.
+
+PostgreSQL posiada sterowniki dla większości języków programowania, w tym
+referencyjną bibliotekę libpq w języku C, JDBC dla Javy, psycopg oraz asyncpg
+dla Pythona, node-postgres dla JavaScript oraz pgx dla Go. Wszystkie znaczące
+biblioteki ORM, takie jak Hibernate, SQLAlchemy, Entity Framework, ActiveRecord,
+TypeORM oraz Prisma, oferują natywne wsparcie dla tego silnika. Integracja
+z narzędziami klasy Business Intelligence, w tym Tableau, Power BI, Metabase,
+Grafana oraz Apache Superset, realizowana jest poprzez standardowe sterowniki
+JDBC oraz ODBC, bez konieczności stosowania dodatkowych konektorów.
+
+Mechanizm Foreign Data Wrappers (FDW) umożliwia odpytywanie zewnętrznych
+źródeł danych -- innych instancji PostgreSQL, baz MySQL, Oracle, plików CSV
+oraz interfejsów REST -- przy pomocy standardowych zapytań SQL, co zapewnia
+podstawową funkcjonalność systemów federacyjnych. W środowiskach chmurowych
+PostgreSQL dostępny jest jako Amazon RDS, Amazon Aurora PostgreSQL, Google
+Cloud SQL oraz Azure Database for PostgreSQL. Funkcjonują również wyspecjalizowane
+platformy oparte na PostgreSQL, takie jak Supabase oraz Neon, które dodają
+warstwy REST/GraphQL oraz model serverless.
 
 \subsection{Obszary biznesowe}
 
-Dzięki ścisłej zgodności ze standardem, bogatemu katalogowi typów danych
-i dojrzałości silnika, PostgreSQL jest uniwersalnym wyborem w większości
-scenariuszy OLTP oraz HTAP (\textit{Hybrid Transactional/Analytical}).
-Szczególnie mocną pozycję ma w następujących obszarach:
+Ze względu na zgodność ze standardem SQL, dojrzałość silnika oraz brak opłat
+licencyjnych, PostgreSQL stanowi uniwersalny wybór w wielu zastosowaniach
+biznesowych. W sektorze finansowym wykorzystuje się go ze względu na ścisłą
+zgodność z modelem ACID, obsługę poziomu izolacji \textit{serializable} oraz
+typ \texttt{NUMERIC} o dowolnej precyzji, eliminujący błędy związane z
+arytmetyką zmiennoprzecinkową. Możliwość prowadzenia szczegółowego audytu
+za pomocą rozszerzenia pgaudit ułatwia spełnienie wymagań regulacyjnych.
 
-\begin{itemize}
-    \item \textbf{Sektor finansowy} -- ACID, izolacja serializowalna, wsparcie
-    dla typów \texttt{NUMERIC} o dowolnej precyzji (bez błędów
-    zmiennoprzecinkowych), audyt przez pgaudit.
-    \item \textbf{Administracja publiczna i instytucje} -- otwarta licencja
-    eliminuje koszty licencyjne, a transparentność kodu jest istotna
-    w kontekście suwerenności danych.
-    \item \textbf{Systemy geograficzne (GIS)} -- rozszerzenie \textbf{PostGIS}
-    jest de facto standardem branżowym dla operacji geoprzestrzennych,
-    wykorzystywanym przez OpenStreetMap, systemy katastralne i logistyczne.
-    \item \textbf{E-commerce i systemy transakcyjne} -- Shopify, Magento,
-    WooCommerce natywnie wspierają PostgreSQL jako backend.
-    \item \textbf{Szeroko rozumiany sektor technologiczny} -- Apple używa
-    PostgreSQL w iCloud, Instagram jako głównego store'a grafu społecznego,
-    Reddit jako backend-u platformy, podobnie TripAdvisor, GitLab i wiele
-    innych SaaS-ów z obciążeniem rzędu miliardów rekordów.
-    \item \textbf{Nauka i akademia} -- natywne wsparcie dla tablic, typów
-    dokumentowych (JSONB), pełnotekstowego wyszukiwania i rozszerzeń
-    statystycznych (MADlib).
-\end{itemize}
+W administracji publicznej oraz instytucjach państwowych istotnym argumentem
+jest otwarta licencja, transparentność kodu źródłowego oraz brak uzależnienia
+od dostawcy, co ma znaczenie w kontekście suwerenności danych. W obszarze
+systemów geoprzestrzennych rozszerzenie PostGIS stanowi standard branżowy --
+wykorzystywane jest między innymi przez OpenStreetMap, systemy katastralne
+oraz platformy logistyczne. W e-commerce PostgreSQL pełni funkcję głównego
+silnika bazodanowego w platformie Shopify, natomiast w sektorze technologicznym
+znajduje zastosowanie w systemach takich jak GitLab, Instagram (graf społeczny),
+Reddit oraz w wielu rozwiązaniach klasy SaaS o wolumenach rzędu miliardów rekordów.
+
+W środowisku akademickim oraz w zastosowaniach naukowych ceniona jest natywna
+obsługa tablic, dokumentów JSONB, wyszukiwania pełnotekstowego oraz rozszerzeń
+statystycznych, takich jak MADlib. Coraz większą rolę odgrywa również rozszerzenie
+pgvector, dodające typ wektora oraz indeksy HNSW, wykorzystywane w systemach
+wyszukiwania podobieństwa embeddingów modeli językowych.
 
 \subsection{Zalety}
 
-\begin{itemize}
-    \item \textbf{Pełna zgodność ACID} i MVCC -- czytelnicy nie blokują
-    pisarzy ani odwrotnie, co daje wysoką współbieżność bez zakleszczeń
-    charakterystycznych dla modeli z blokadami.
-    \item \textbf{Bogactwo typów danych} -- oprócz standardowego SQL:
-    tablice, zakresy (\texttt{RANGE}), hstore, JSON/JSONB, UUID, typy
-    geometryczne, sieciowe (CIDR, INET, MACADDR), pełnotekstowe
-    (\texttt{tsvector}/\texttt{tsquery}), a także typy niestandardowe
-    definiowane przez użytkownika.
-    \item \textbf{Zaawansowane indeksowanie} -- B-tree, Hash, GIN (dla
-    JSON, tablic i pełnotekstu), GiST (dla danych geometrycznych i zakresów),
-    SP-GiST, BRIN (dla gigantycznych tabel czasoszeregowych), Bloom
-    (przez rozszerzenie). Wsparcie dla indeksów częściowych, funkcyjnych,
-    wielokolumnowych i pokrywających (\textit{covering} z \texttt{INCLUDE}).
-    \item \textbf{Rozszerzalność} -- użytkownik może definiować własne
-    typy, operatory, funkcje agregujące oraz pisać procedury w wielu
-    językach (PL/pgSQL, PL/Python, PL/Perl, PL/V8/JavaScript, PL/Tcl).
-    \item \textbf{Ekosystem rozszerzeń} -- PostGIS, TimescaleDB,
-    pgvector (wektory embeddingów LLM), pg\_trgm, pg\_partman,
-    pg\_stat\_statements, pgcrypto.
-    \item \textbf{Dojrzałość i stabilność} -- aktywny rozwój od blisko 40 lat,
-    silna społeczność, regularne wydania majorowe (raz w roku) wspierane
-    przez 5 lat.
-    \item \textbf{Licencja} -- liberalna, bez opłat licencyjnych i bez
-    ograniczeń dla użycia komercyjnego.
-\end{itemize}
+Najistotniejszą zaletą PostgreSQL jest połączenie pełnej zgodności z modelem
+ACID z mechanizmem MVCC, zapewniającym wysoką współbieżność bez konieczności
+stosowania blokad współdzielonych, charakterystycznych dla starszych silników
+relacyjnych. System oferuje rozbudowany katalog typów danych, obejmujący
+tablice, zakresy, typy sieciowe (\texttt{INET}, \texttt{CIDR}, \texttt{MACADDR}),
+typy geometryczne, pełnotekstowe (\texttt{tsvector}, \texttt{tsquery}), UUID,
+JSON oraz JSONB, a także typy definiowane przez użytkownika.
+
+Mechanizm indeksowania należy do najbardziej rozbudowanych spośród dostępnych
+silników relacyjnych. Wspierane są indeksy B-tree, hash, GIN (dla danych typu
+JSON, tablic oraz pełnotekstowych), GiST (dla typów geometrycznych i zakresowych),
+SP-GiST, BRIN (dla bardzo dużych tabel czasoszeregowych) oraz Bloom dostępny
+poprzez rozszerzenie. Dostępne są również indeksy częściowe, funkcyjne,
+wielokolumnowe oraz pokrywające z klauzulą \texttt{INCLUDE}.
+
+Rozszerzalność stanowi cechę wyraźnie odróżniającą PostgreSQL od innych
+otwartoźródłowych silników relacyjnych. Użytkownik może definiować własne
+typy, operatory, funkcje agregujące oraz tworzyć procedury w wielu językach,
+między innymi w PL/pgSQL, PL/Python, PL/V8 oraz PL/Perl. Ekosystem rozszerzeń
+obejmuje PostGIS, TimescaleDB, pgvector, pg\_trgm, pg\_stat\_statements,
+pg\_partman oraz pgcrypto. Liberalna licencja oraz blisko czterdziestoletni
+okres rozwoju, połączony z regularnym cyklem wydań głównych i pięcioletnim
+okresem wsparcia, gwarantują stabilność wdrożeń produkcyjnych.
 
 \subsection{Wady i ograniczenia}
 
-\begin{itemize}
-    \item \textbf{Brak natywnego shardingu} -- skalowanie horyzontalne
-    wymaga zewnętrznych narzędzi (Citus) lub shardingu na poziomie aplikacji.
-    \item \textbf{Narzut MVCC} -- każdy \texttt{UPDATE} tworzy nową wersję
-    wiersza zamiast modyfikować istniejącą, co generuje "śmieci"
-    (\textit{dead tuples}) i wymaga regularnego \texttt{VACUUM}. Na obciążeniach
-    z bardzo częstymi aktualizacjami może prowadzić do tzw.~\textit{table bloat}.
-    \item \textbf{Wysoki koszt połączenia} -- każde połączenie to osobny
-    proces systemowy (a nie lekki wątek jak w MySQL), z narzutem rzędu
-    kilku megabajtów RAM. W systemach z tysiącami klientów konieczny
-    jest pooler (\texttt{pgbouncer}).
-    \item \textbf{Opóźnienie replikacji asynchronicznej} -- przy dużym
-    obciążeniu zapisu replika może odstawać od master-a o kilka sekund,
-    co wymaga świadomego projektowania aplikacji (\textit{read-after-write
-    consistency}).
-    \item \textbf{Złożona administracja} -- bogactwo parametrów (ponad
-    300 ustawień w \texttt{postgresql.conf}) i mechanizmów (WAL,
-    checkpoint, autovacuum, statystyki planera) wymaga znaczącej wiedzy
-    operacyjnej w porównaniu do prostszych silników.
-    \item \textbf{Mniej dojrzałe narzędzia diagnostyczne niż Oracle/SQL~Server} --
-    mimo \texttt{pg\_stat\_statements}, \texttt{EXPLAIN (ANALYZE, BUFFERS)}
-    i rozszerzeń monitorujących, brakuje zintegrowanego środowiska
-    typu Oracle Enterprise Manager.
-    \item \textbf{Case-sensitivity nieokarowanych identyfikatorów} -- standardowo
-    PostgreSQL sprowadza nieokarowane identyfikatory do małych liter,
-    co bywa źródłem pomyłek przy migracjach z MS~SQL Server.
-\end{itemize}
+Brak natywnego shardingu stanowi istotne ograniczenie w zastosowaniach
+wymagających skalowania horyzontalnego. Realizacja tego mechanizmu wymaga
+zastosowania zewnętrznych rozszerzeń lub partycjonowania na poziomie aplikacji.
+Mechanizm MVCC wprowadza dodatkowy narzut -- każda operacja \texttt{UPDATE}
+tworzy nową wersję wiersza, a wersje wyparte muszą być cyklicznie usuwane
+przez proces autovacuum. W systemach o dużym wolumenie operacji aktualizacji
+może to prowadzić do efektu rozrostu tabel (\textit{table bloat}) i wymaga
+starannego strojenia parametrów odpowiedzialnych za czyszczenie danych.
+
+Procesowy model obsługi połączeń, w którym każda sesja realizowana jest
+w osobnym procesie systemowym, generuje istotny narzut pamięciowy w aplikacjach
+o dużej liczbie równoległych klientów. W takich przypadkach niezbędne jest
+zastosowanie zewnętrznego mechanizmu poolingu połączeń. Replikacja
+asynchroniczna może wykazywać opóźnienia rzędu kilku sekund pod znacznym
+obciążeniem zapisu, co wymaga uwzględnienia w architekturze aplikacji
+mechanizmów obsługujących spójność typu read-after-write.
+
+Administracja systemem jest zadaniem wymagającym znacznej wiedzy operacyjnej.
+Plik konfiguracyjny \texttt{postgresql.conf} zawiera ponad trzysta parametrów,
+a poprawne strojenie mechanizmów autovacuum, checkpointów, dziennika WAL
+oraz statystyk planera wymaga dogłębnej znajomości silnika. Narzędzia
+diagnostyczne, choć rozbudowane (\texttt{pg\_stat\_statements},
+\texttt{EXPLAIN ANALYZE}, pgBadger), nie tworzą zintegrowanego środowiska
+porównywalnego z Oracle Enterprise Manager czy SQL Server Management Studio.
+Dodatkowo PostgreSQL standardowo sprowadza nieokarowane identyfikatory do
+małych liter, co bywa źródłem niezgodności podczas migracji z systemów
+zachowujących wielkość liter.
 
 \subsection{Udogodnienia}
 
-PostgreSQL wyróżnia się szeregiem wygodnych funkcji zwiększających
-produktywność na co dzień:
+Dialekt SQL implementowany przez PostgreSQL należy do najbogatszych spośród
+otwartoźródłowych silników relacyjnych. Obsługiwane są funkcje okienkowe
+z klauzulami \texttt{OVER}, \texttt{PARTITION BY} oraz \texttt{ROWS BETWEEN},
+wspólne wyrażenia tablicowe (CTE), w tym rekurencyjne, złączenia typu
+\texttt{LATERAL JOIN}, konstrukcje \texttt{GROUPING SETS}, \texttt{CUBE}
+oraz \texttt{ROLLUP}, instrukcja \texttt{MERGE} dostępna od wersji 15
+oraz klauzula \texttt{RETURNING} w operacjach modyfikujących dane. Typ JSONB
+udostępniany jest jako pełnoprawny typ danych z operatorami ścieżkowymi
+(\texttt{->}, \texttt{->>}, \texttt{@>}) oraz wsparciem indeksów GIN
+umożliwiających efektywne filtrowanie po dowolnych polach dokumentu.
 
-\begin{itemize}
-    \item \textbf{Rozbudowany SQL} -- funkcje okienkowe (\texttt{OVER},
-    \texttt{PARTITION BY}, \texttt{ROWS BETWEEN}), CTE (w tym rekurencyjne),
-    \texttt{LATERAL JOIN}, \texttt{GROUPING SETS}/\texttt{CUBE}/\texttt{ROLLUP},
-    \texttt{MERGE} (od wersji~15), \texttt{RETURNING} na \texttt{INSERT}/\texttt{UPDATE}/\texttt{DELETE}.
-    \item \textbf{JSON/JSONB} -- natywne typy dokumentowe, operatory ścieżkowe
-    (\texttt{->}, \texttt{->>}, \texttt{@>}, \texttt{jsonpath}) oraz indeksy
-    GIN pozwalające efektywnie filtrować po dowolnych polach dokumentu.
-    \item \textbf{Full-text search} -- wbudowane wyszukiwanie pełnotekstowe
-    z obsługą wielu języków (w tym polskiego przez \texttt{pg\_catalog.polish}),
-    tokenizacji, stop-words, steamingu i rankingu.
-    \item \textbf{LISTEN/NOTIFY} -- wbudowany mechanizm pub/sub bez zewnętrznego
-    brokera -- aplikacje mogą otrzymywać powiadomienia o zmianach w bazie
-    w czasie rzeczywistym.
-    \item \textbf{Narzędzia CLI/GUI} -- \texttt{psql} to jedno z najbogatszych
-    narzędzi CLI (wsparcie dla \texttt{\textbackslash d}, \texttt{\textbackslash timing},
-    \texttt{\textbackslash watch}, formatowanie wyników, podłączanie skryptów).
-    GUI obejmuje pgAdmin, DBeaver, DataGrip, pg\_activity.
-    \item \textbf{EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)} -- jedno
-    z najlepszych narzędzi do analizy planów wykonania w branży, pozwalające
-    diagnozować nie tylko typ operacji, ale też liczbę wierszy szacowanych
-    vs rzeczywistych, wykorzystanie buforów i rzeczywisty czas wykonania
-    per węzeł planu.
-    \item \textbf{Generated columns i partial indexes} -- kolumny obliczane
-    automatycznie (od wersji~12) oraz indeksy częściowe obejmujące tylko
-    wybrany podzbiór wierszy (\texttt{WHERE is\_active = TRUE}) --
-    zmniejszają koszt zapisu i rozmiar indeksu.
-\end{itemize}
+Wbudowany mechanizm wyszukiwania pełnotekstowego obsługuje tokenizację,
+listy słów ignorowanych, stemming oraz ranking wyników w wielu językach,
+w tym w języku polskim poprzez odpowiednie konfiguracje słownikowe.
+Mechanizm \texttt{LISTEN}/\texttt{NOTIFY} stanowi wbudowany system
+publish-subscribe, eliminujący konieczność stosowania zewnętrznego brokera
+w prostych scenariuszach powiadamiania o zmianach. Klient \texttt{psql}
+udostępnia rozbudowany zestaw poleceń metarozkazów (\verb|\d|, \verb|\timing|,
+\verb|\watch|, \verb|\copy|), a wśród narzędzi graficznych znajdują się
+pgAdmin, DBeaver, DataGrip oraz \texttt{pg\_activity}.
+
+Polecenie \texttt{EXPLAIN} z opcjami \texttt{ANALYZE}, \texttt{BUFFERS} oraz
+\texttt{FORMAT JSON} umożliwia szczegółową analizę planów wykonania,
+prezentując zarówno szacunki planera, jak i rzeczywiste statystyki, w tym
+wykorzystanie buforów i czas wykonania poszczególnych węzłów planu.
+Dodatkowymi udogodnieniami są kolumny generowane (\textit{generated columns}),
+dostępne od wersji 12, oraz indeksy częściowe, obejmujące jedynie wybrany
+podzbiór wierszy, co zmniejsza koszt operacji zapisu i ogranicza rozmiar
+indeksu.

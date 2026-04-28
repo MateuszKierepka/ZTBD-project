@@ -1,199 +1,225 @@
-Neo4j to otwartoźródłowa grafowa baza danych rozwijana od 2007 roku przez
-szwedzką firmę Neo4j Inc. Obecna linia 5.x (stan na 2025~r.) należy do
-kategorii baz NoSQL i zamiast tabel czy dokumentów przechowuje dane w postaci
-grafu złożonego z węzłów (nodes), krawędzi (relationships) i właściwości
-(properties). Do odpytywania danych służy deklaratywny język Cypher,
-zaprojektowany specjalnie do nawigacji po grafach. Neo4j jest dostępny
-na licencji GPL (Community Edition) oraz komercyjnej (Enterprise Edition).
+Neo4j jest otwartoźródłową grafową bazą danych, rozwijaną od 2007 roku przez
+szwedzką firmę Neo4j Inc. Aktualna linia 2026.x (stan na kwiecień 2026~r.),
+oparta na schemacie nazewnictwa wersji wprowadzonym w 2025 roku, należy do
+kategorii systemów NoSQL. W odróżnieniu od baz relacyjnych oraz dokumentowych,
+dane przechowywane są w postaci grafu złożonego z węzłów (\textit{nodes}),
+krawędzi (\textit{relationships}) oraz właściwości (\textit{properties})
+przypisanych zarówno węzłom, jak i krawędziom. Językiem zapytań jest deklaratywny
+Cypher, zaprojektowany specjalnie do nawigowania po strukturach grafowych.
+Neo4j dystrybuowany jest na licencji GPL w wariancie Community Edition oraz
+na licencji komercyjnej w wariancie Enterprise Edition.
 
 \subsection{Skalowalność}
 
-Neo4j w wersji Community Edition działa jako pojedynczy węzeł bez możliwości
-replikacji. Enterprise Edition oferuje Causal Clustering -- mechanizm
-klastrowania oparty o protokół Raft, który zapewnia replikację i wysoką
-dostępność. Klaster składa się z węzłów primary (obsługują zapis) i secondary
-(obsługują odczyt), a spójność między nimi jest gwarantowana przez protokół
-consensusu.
+W edycji Community Neo4j funkcjonuje jako pojedynczy węzeł, bez wsparcia dla
+replikacji oraz mechanizmów wysokiej dostępności. Edycja Enterprise udostępnia
+mechanizm Causal Clustering, oparty na protokole konsensusu Raft, zapewniający
+replikację danych oraz odporność na awarie. Klaster składa się z węzłów
+\textit{primary}, obsługujących operacje zapisu, oraz węzłów \textit{secondary},
+przeznaczonych do obsługi odczytów. Spójność pomiędzy węzłami gwarantowana
+jest przez algorytm konsensusu, co zapewnia liniowość operacji zapisu.
 
-Skalowanie poziome przez sharding nie jest natywną cechą Neo4j -- cały graf
-przechowywany jest na jednym węźle lub replikowany w całości na wszystkie
-węzły klastra. Dla bardzo dużych grafów (miliardy węzłów i krawędzi) jest
-to istotne ograniczenie. Skalowanie pionowe jest obsługiwane dobrze -- Neo4j
-agresywnie cachuje często odwiedzane fragmenty grafu w pamięci RAM, co
-przekłada się na bardzo niskie czasy odpowiedzi przy nawigacji po grafie.
+Skalowanie horyzontalne poprzez sharding nie stanowi natywnej cechy systemu --
+graf przechowywany jest w całości na pojedynczym węźle lub replikowany
+w pełnej formie pomiędzy węzłami klastra. Dla grafów o rozmiarach rzędu
+miliardów węzłów oraz krawędzi ograniczenie to ma istotne znaczenie. Rozwiązanie
+Neo4j Fabric, dostępne w edycji Enterprise, umożliwia logiczne łączenie
+oddzielnych baz Neo4j w ramach jednego punktu dostępu, jednak nie zastępuje
+pełnowartościowego mechanizmu shardingu. Skalowanie pionowe wykazuje wysoką
+efektywność -- silnik agresywnie buforuje aktywnie używane fragmenty grafu
+w pamięci operacyjnej, co przekłada się na niskie opóźnienia operacji
+nawigacji po sąsiedztwie węzła.
 
 \subsection{Bezpieczeństwo}
 
-Neo4j oferuje kontrolę dostępu opartą na rolach (RBAC). Wbudowane role
-obejmują uprawnienia do odczytu, zapisu i administracji, a użytkownik może
-definiować własne role z granularnym dostępem do konkretnych baz danych,
-etykiet węzłów i typów relacji. Uwierzytelnianie obsługuje hasła, certyfikaty
-X.509 oraz integrację z LDAP i SSO przez OpenID Connect (Enterprise Edition).
+Kontrola dostępu realizowana jest w oparciu o model RBAC (Role-Based Access
+Control). Wbudowane role obejmują uprawnienia odczytu, zapisu oraz administracji,
+a użytkownik ma możliwość definiowania ról niestandardowych z granularnym
+zakresem dostępu do konkretnych baz danych, etykiet węzłów oraz typów
+relacji. Uwierzytelnianie obsługuje hasła, certyfikaty X.509 oraz, w edycji
+Enterprise, integrację z usługą LDAP oraz mechanizmami pojedynczego logowania
+(SSO) opartymi na standardzie OpenID Connect.
 
-Komunikacja między klientem a serwerem może być szyfrowana przez TLS.
-Enterprise Edition oferuje też szyfrowanie danych w spoczynku oraz
-zaawansowany audyt operacji. Od wersji 4.x Neo4j obsługuje wiele baz danych
-w ramach jednej instancji (multi-database), co pozwala izolować dane różnych
-aplikacji lub klientów na poziomie silnika.
+Komunikacja klient–serwer może być szyfrowana przy pomocy protokołu TLS.
+Edycja Enterprise zapewnia również szyfrowanie danych w spoczynku oraz
+rozbudowany mechanizm audytu operacji wykonywanych na bazie. Od wersji 4.x
+silnik obsługuje jednoczesne funkcjonowanie wielu baz danych w obrębie
+pojedynczej instancji (\textit{multi-database}), co umożliwia logiczne
+oddzielenie danych różnych aplikacji lub klientów na poziomie silnika
+bazodanowego.
 
 \subsection{Awaryjność}
 
-Trwałość danych w Neo4j zapewnia mechanizm Write-Ahead Log (WAL) -- każda
-operacja jest najpierw zapisywana do dziennika transakcji, a dopiero potem
-stosowana do plików grafu. W przypadku awarii serwer odtwarza stan
-z dziennika przy kolejnym uruchomieniu. Neo4j obsługuje transakcje ACID
-na poziomie pojedynczej operacji Cypher.
+Trwałość danych jest zapewniana przez mechanizm Write-Ahead Log -- każda
+operacja zapisywana jest najpierw do dziennika transakcji, a dopiero
+następnie wprowadzana do plików grafu. W przypadku nieoczekiwanego przerwania
+pracy serwera spójny stan bazy zostaje odtworzony na podstawie zawartości
+dziennika podczas kolejnego uruchomienia. Neo4j zapewnia pełną zgodność
+z modelem ACID na poziomie pojedynczej operacji Cypher.
 
-Causal Clustering (Enterprise Edition) zapewnia automatyczny failover --
-jeśli węzeł primary przestanie odpowiadać, pozostałe węzły przeprowadzają
-wybory lidera i jeden z secondary przejmuje rolę primary. Czas przełączenia
-zależy od konfiguracji timeoutów, zazwyczaj wynosi kilka do kilkunastu
-sekund. Kopie zapasowe można tworzyć przez \texttt{neo4j-admin backup}
-(online, bez zatrzymywania serwera w Enterprise Edition) lub przez
-zrzut bazy \texttt{neo4j-admin dump} (offline).
+Mechanizm Causal Clustering, dostępny w edycji Enterprise, zapewnia automatyczny
+failover. W sytuacji utraty kontaktu z węzłem primary pozostałe węzły inicjują
+procedurę wyboru nowego lidera. Po jej zakończeniu jeden z węzłów secondary
+przejmuje rolę primary, a czas przełączenia, uzależniony od konfiguracji
+parametrów timeout, mieści się typowo w przedziale od kilku do kilkunastu
+sekund. Tworzenie kopii zapasowych realizowane jest przy pomocy polecenia
+\texttt{neo4j-admin backup}, działającego w trybie online bez wstrzymywania
+operacji serwera (wyłącznie w edycji Enterprise), lub poprzez wykonanie
+zrzutu offline narzędziem \texttt{neo4j-admin dump}.
 
 \subsection{Migracje}
 
-Migracja danych do Neo4j realizowana jest najczęściej przez narzędzie
-\texttt{neo4j-admin import} -- szybki importer wsadowy przyjmujący dane
-w formacie CSV, zdolny do załadowania miliardów węzłów i krawędzi
-w stosunkowo krótkim czasie. Alternatywą dla mniejszych zbiorów jest
-użycie języka Cypher z instrukcją \texttt{LOAD CSV} lub bibliotek jak
-APOC (Awesome Procedures on Cypher), które oferują dodatkowe procedury
-importu z różnych formatów i źródeł.
+Podstawowym narzędziem do ładowania danych do Neo4j jest \texttt{neo4j-admin
+import} -- wsadowy importer akceptujący dane w formacie CSV, zoptymalizowany
+pod kątem efektywnego ładowania zbiorów obejmujących miliardy węzłów oraz
+krawędzi. W przypadku zbiorów o mniejszym wolumenie alternatywą pozostaje
+instrukcja \texttt{LOAD CSV} języka Cypher oraz biblioteka APOC (Awesome
+Procedures on Cypher), udostępniająca dodatkowe procedury importu z różnych
+formatów oraz źródeł danych.
 
-Migracja z relacyjnych baz danych wymaga przemyślenia modelu danych --
-tabele stają się etykietami węzłów, a klucze obce stają się relacjami.
-Narzędzie \texttt{neo4j-etl-tool} (ETL Tool) wspiera automatyczną konwersję
-schematu relacyjnego na model grafowy. Wersjonowanie schematu grafu nie ma
-ustandaryzowanych narzędzi klasy Flyway czy Liquibase -- zarządzanie zmianami
-schematu realizuje się zazwyczaj przez własne skrypty Cypher lub procedury APOC.
+Migracja z relacyjnych systemów bazodanowych wymaga przeprojektowania modelu
+danych -- tabele typowo odwzorowywane są na etykiety węzłów, natomiast klucze
+obce na typy relacji. Komponent Neo4j ETL Tool wspiera automatyczną konwersję
+schematu relacyjnego na model grafowy. Wersjonowanie schematu grafu nie jest
+objęte ujednoliconym standardem narzędziowym -- w odróżnieniu od ekosystemu
+relacyjnego, w którym dominują rozwiązania klasy Flyway oraz Liquibase,
+zarządzanie zmianami schematu w Neo4j realizowane jest typowo przy pomocy
+niestandardowych skryptów Cypher lub procedur biblioteki APOC.
 
 \subsection{Integracje}
 
-Neo4j oferuje oficjalne sterowniki dla popularnych języków programowania:
-Python (neo4j-driver), Java, JavaScript/Node.js, Go, .NET i Ruby, wszystkie
-oparte na protokole Bolt. Dostępna jest też biblioteka OGM (Object Graph
-Mapper) dla Javy i Spring Data Neo4j dla ekosystemu Spring.
+Neo4j udostępnia oficjalne sterowniki dla większości popularnych języków
+programowania, w tym dla Pythona (\texttt{neo4j-driver}), Javy, JavaScript
+i Node.js, języków Go oraz .NET, a także Ruby. Wszystkie wymienione sterowniki
+oparte są na protokole binarnym Bolt. Dostępna jest również biblioteka
+Object Graph Mapper (OGM) dla języka Java oraz Spring Data Neo4j, integrująca
+silnik z ekosystemem frameworka Spring.
 
-APOC (Awesome Procedures on Cypher) to de facto standardowa biblioteka
-rozszerzeń dla Neo4j, oferująca setki dodatkowych procedur i funkcji do
-importu, eksportu, manipulacji grafem i integracji z zewnętrznymi systemami.
-GDS (Graph Data Science Library) to oficjalna biblioteka algorytmów grafowych
--- PageRank, community detection, shortest path, link prediction i wiele
-innych -- wykonywanych bezpośrednio w bazie. Neo4j AuraDB to zarządzana
-wersja chmurowa dostępna na AWS, Google Cloud i Azure.
+Biblioteka APOC (Awesome Procedures on Cypher) stanowi de facto standardowe
+rozszerzenie systemu, udostępniając kilkaset dodatkowych procedur oraz funkcji
+z zakresu importu i eksportu danych, manipulacji strukturą grafu oraz
+integracji z systemami zewnętrznymi. Komponent Graph Data Science Library
+(GDS) udostępnia oficjalne implementacje algorytmów grafowych, między innymi
+PageRank, wykrywanie społeczności (\textit{community detection}), wyszukiwanie
+najkrótszych ścieżek oraz przewidywanie powiązań (\textit{link prediction}),
+wykonywanych bezpośrednio w obrębie silnika bazodanowego, bez konieczności
+eksportowania danych do środowisk zewnętrznych. Platforma Neo4j AuraDB
+stanowi zarządzaną wersję chmurową, dostępną w infrastrukturach AWS, Google
+Cloud oraz Azure.
 
 \subsection{Obszary biznesowe}
 
-Neo4j najlepiej sprawdza się wszędzie tam, gdzie relacje między danymi są
-równie ważne jak same dane i gdzie ich liczba oraz złożoność jest duża:
+Neo4j znajduje zastosowanie przede wszystkim w scenariuszach, w których
+relacje pomiędzy danymi mają znaczenie porównywalne lub nadrzędne wobec samych
+danych, a ich liczba oraz złożoność uniemożliwiają efektywną implementację
+w modelu relacyjnym. Klasycznym obszarem zastosowań są systemy rekomendacji,
+w których filtrowanie kolaboratywne oraz rekomendacje oparte na podobieństwie
+użytkowników i produktów stanowią naturalne zastosowanie struktur grafowych.
+Z mechanizmów tych korzystają między innymi platformy streamingowe, takie
+jak Netflix, oraz serwisy e-commerce, takie jak eBay.
 
-\begin{itemize}
-    \item \textbf{Systemy rekomendacji} -- filtrowanie kolaboratywne
-    i rekomendacje oparte na podobieństwie użytkowników i produktów są
-    naturalnym zastosowaniem grafu. Stosowane przez Netflix, eBay i inne
-    platformy streamingowe i e-commerce.
-    \item \textbf{Wykrywanie oszustw} -- analiza powiązań między kontami,
-    transakcjami i urządzeniami pozwala identyfikować podejrzane wzorce
-    trudne do wykrycia w modelach relacyjnych. Używane przez banki
-    i instytucje finansowe.
-    \item \textbf{Grafy wiedzy i wyszukiwarki} -- przechowywanie encji
-    i ich wzajemnych powiązań (knowledge graph) jest podstawą semantycznego
-    wyszukiwania. Google Knowledge Graph jest przykładem tej klasy systemów.
-    \item \textbf{Sieci społecznościowe} -- modelowanie użytkowników,
-    znajomości, followersów i interakcji jako grafu jest naturalnym
-    podejściem. LinkedIn używa grafowych baz danych do modelowania sieci
-    zawodowej.
-    \item \textbf{Zarządzanie siecią i infrastrukturą IT} -- modelowanie
-    zależności między węzłami sieci, serwerami i usługami jako grafu
-    ułatwia analizę wpływu awarii i planowanie zmian.
-    \item \textbf{Systemy zgodności i regulacyjne} -- śledzenie łańcuchów
-    własności, powiązań między podmiotami i przepływów finansowych
-    w kontekście AML (Anti-Money Laundering) i KYC (Know Your Customer).
-\end{itemize}
+W sektorze finansowym Neo4j wykorzystywany jest do wykrywania oszustw poprzez
+analizę powiązań pomiędzy kontami, transakcjami oraz urządzeniami końcowymi.
+Identyfikacja podejrzanych wzorców w sieci powiązań jest istotnie utrudniona
+w modelu relacyjnym, podczas gdy struktury grafowe umożliwiają jej efektywną
+realizację. Z analogicznych względów silnik znajduje zastosowanie w systemach
+zgodności regulacyjnej, w szczególności w kontekście procedur AML
+(\textit{Anti-Money Laundering}) oraz KYC (\textit{Know Your Customer}),
+gdzie konieczna jest analiza łańcuchów własności oraz przepływów finansowych.
+
+Grafy wiedzy (\textit{knowledge graphs}) stanowią kolejny istotny obszar
+zastosowań -- przechowywanie encji oraz ich wzajemnych powiązań stanowi
+podstawę dla mechanizmów semantycznego wyszukiwania, czego przykładem
+jest Google Knowledge Graph. W obszarze sieci społecznościowych modelowanie
+użytkowników, ich znajomości oraz interakcji jako struktury grafowej stanowi
+naturalne podejście, wykorzystywane między innymi przez LinkedIn do
+reprezentacji sieci kontaktów zawodowych. W zarządzaniu infrastrukturą
+informatyczną grafy wykorzystywane są do modelowania zależności pomiędzy
+węzłami sieci, serwerami oraz usługami, co ułatwia analizę wpływu awarii
+oraz planowanie zmian.
 
 \subsection{Zalety}
 
-\begin{itemize}
-    \item \textbf{Natywny model grafowy} -- dane i relacje przechowywane
-    są w strukturze optymalnej dla nawigacji po grafie. Przechodzenie
-    przez relacje (graph traversal) ma złożoność zależną od lokalnego
-    sąsiedztwa węzła, a nie od całkowitego rozmiaru bazy.
-    \item \textbf{Język Cypher} -- deklaratywny, czytelny język zapytań
-    zaprojektowany specjalnie dla grafów. Zapytania o wzorce w grafie
-    (pattern matching) są znacznie bardziej zwięzłe niż ich odpowiedniki
-    w SQL z wieloma JOIN-ami.
-    \item \textbf{Wydajność przy głębokich powiązaniach} -- zapytania
-    wymagające przejścia przez wiele poziomów relacji (np. znajomi znajomych,
-    ścieżki w grafie) są w Neo4j wielokrotnie szybsze niż odpowiedniki
-    w relacyjnych bazach danych.
-    \item \textbf{Graph Data Science Library} -- bogata biblioteka
-    gotowych algorytmów grafowych (PageRank, Louvain, betweenness centrality,
-    node2vec) wykonywanych bezpośrednio w bazie bez eksportowania danych.
-    \item \textbf{Intuicyjne modelowanie} -- model węzłów i relacji
-    jest naturalnym odwzorowaniem rzeczywistości w wielu domenach,
-    co ułatwia projektowanie i komunikację z ekspertami domenowymi.
-    \item \textbf{APOC} -- rozbudowana biblioteka procedur rozszerzająca
-    możliwości Cypher o setki dodatkowych funkcji, od manipulacji danymi
-    po integrację z zewnętrznymi systemami.
-\end{itemize}
+Najistotniejszą zaletą systemu jest natywny model grafowy. Dane oraz relacje
+przechowywane są w strukturze fizycznej zoptymalizowanej pod kątem nawigacji
+po grafie, co sprawia, że złożoność operacji przechodzenia po krawędziach
+(\textit{graph traversal}) zależy od lokalnego sąsiedztwa węzła, a nie od
+całkowitego rozmiaru bazy danych. W silnikach relacyjnych analogiczne
+operacje wymagają wielokrotnego wykonania złączeń, których koszt rośnie
+wraz z rozmiarem tabel.
+
+Język Cypher zapewnia deklaratywną i czytelną składnię, zaprojektowaną
+specjalnie dla zapytań grafowych. Wzorce w grafie reprezentowane są
+w notacji wizualnie odwzorowującej strukturę poszukiwanej podstruktury, dzięki
+czemu zapytania są istotnie zwięźlejsze od ich odpowiedników w SQL,
+zawierających liczne operacje złączenia. Wydajność zapytań wymagających
+przejścia przez wiele poziomów relacji, takich jak wyszukiwanie znajomych
+znajomych lub analiza ścieżek w grafie, jest wielokrotnie wyższa niż
+w przypadku odpowiadających im implementacji w bazach relacyjnych.
+
+Komponent Graph Data Science Library udostępnia bogaty zestaw gotowych
+algorytmów grafowych, w tym PageRank, algorytm Louvain, miarę pośredniczenia
+(\textit{betweenness centrality}) oraz node2vec, wykonywanych bezpośrednio
+w bazie danych, bez konieczności eksportowania danych do środowisk
+zewnętrznych. Model węzłów oraz relacji stanowi naturalne odwzorowanie wielu
+domen biznesowych, co ułatwia projektowanie systemu oraz komunikację
+z ekspertami dziedzinowymi. Biblioteka APOC, zawierająca ponad czterysta
+procedur, znacząco rozszerza funkcjonalność języka Cypher o operacje
+manipulacji danymi oraz integracji z systemami zewnętrznymi.
 
 \subsection{Wady i ograniczenia}
 
-\begin{itemize}
-    \item \textbf{Brak natywnego shardingu} -- cały graf musi mieścić się
-    na jednym węźle lub być replikowany w całości, co ogranicza skalowalność
-    przy bardzo dużych zbiorach danych.
-    \item \textbf{Słabsza wydajność przy zapytaniach globalnych} -- operacje
-    wymagające pełnego skanowania grafu (np. agregacje po wszystkich węzłach
-    danego typu) są wolniejsze niż odpowiedniki w relacyjnych bazach danych
-    z dobrze zaindeksowanymi tabelami.
-    \item \textbf{Ograniczone narzędzia analityczne} -- Neo4j nie jest
-    silnikiem OLAP i nie nadaje się do klasycznej analityki biznesowej
-    opartej na raportach tabelarycznych. Integracja z narzędziami BI
-    jest ograniczona w porównaniu do silników relacyjnych.
-    \item \textbf{Mniejszy ekosystem} -- w porównaniu do PostgreSQL czy
-    MySQL Neo4j ma mniej dostępnych sterowników, mniejszą społeczność
-    i mniej gotowych rozwiązań, co może utrudniać znalezienie pomocy
-    przy niestandardowych problemach.
-    \item \textbf{Licencja Community Edition} -- wersja darmowa nie obsługuje
-    klastrowania ani zaawansowanych funkcji bezpieczeństwa, co w praktyce
-    wymusza zakup licencji Enterprise dla zastosowań produkcyjnych
-    wymagających wysokiej dostępności.
-    \item \textbf{Krzywa uczenia Cypher} -- mimo że Cypher jest czytelny,
-    efektywne pisanie zapytań grafowych wymaga innego sposobu myślenia
-    niż SQL, co może być barierą dla zespołów przyzwyczajonych do
-    relacyjnych baz danych.
-    \item \textbf{Narzut przy prostych operacjach CRUD} -- dla prostych
-    operacji na pojedynczych rekordach bez złożonych powiązań Neo4j
-    generuje większy narzut niż silniki relacyjne, co potwierdzają
-    wyniki benchmarków przeprowadzonych w niniejszej pracy.
-\end{itemize}
+Brak natywnego shardingu stanowi najistotniejsze ograniczenie systemu --
+graf musi mieścić się w całości na pojedynczym węźle lub być replikowany
+w pełnej formie, co istotnie ogranicza skalowalność w przypadku zbiorów
+danych o bardzo dużych rozmiarach. Wydajność operacji wymagających pełnego
+przeszukania grafu, takich jak agregacje obejmujące wszystkie węzły danego
+typu, jest niższa niż w przypadku odpowiadających im implementacji w bazach
+relacyjnych z dobrze zaprojektowanymi indeksami.
+
+Neo4j nie stanowi silnika klasy OLAP i nie nadaje się do realizacji klasycznej
+analityki biznesowej opartej na raportach o strukturze tabelarycznej. Integracja
+z narzędziami Business Intelligence pozostaje ograniczona w porównaniu
+z silnikami relacyjnymi. W zestawieniu z PostgreSQL oraz MySQL ekosystem
+narzędziowy Neo4j jest istotnie mniejszy -- obejmuje mniejszą liczbę
+sterowników, mniejszą społeczność oraz mniejszy zasób gotowych rozwiązań,
+co może utrudniać znalezienie wsparcia w przypadku niestandardowych problemów.
+
+Edycja Community nie obsługuje klastrowania oraz zaawansowanych mechanizmów
+bezpieczeństwa, co w praktyce wymusza zakup licencji Enterprise w zastosowaniach
+produkcyjnych wymagających wysokiej dostępności. Mimo czytelnej składni,
+efektywne tworzenie zapytań w języku Cypher wymaga przyjęcia odmiennego
+sposobu modelowania niż w językach opartych na SQL, co stanowi istotną
+barierę dla zespołów dotychczas pracujących wyłącznie z bazami relacyjnymi.
+W przypadku prostych operacji CRUD na pojedynczych rekordach, niezawierających
+złożonych powiązań, Neo4j wykazuje wyższy narzut wykonawczy niż silniki
+relacyjne, co potwierdzają wyniki testów wydajnościowych przeprowadzonych
+w niniejszej pracy.
 
 \subsection{Udogodnienia}
 
-\begin{itemize}
-    \item \textbf{Neo4j Browser} -- wbudowany interfejs webowy do
-    interaktywnego odpytywania bazy w języku Cypher z wizualizacją
-    wyników jako grafu. Pozwala eksplorować strukturę danych bez
-    dodatkowych narzędzi.
-    \item \textbf{Neo4j Bloom} -- narzędzie do wizualnej eksploracji
-    grafu dla użytkowników biznesowych, bez konieczności znajomości
-    Cypher. Pozwala wyszukiwać wzorce i przeglądać powiązania
-    w intuicyjnym interfejsie graficznym.
-    \item \textbf{EXPLAIN i PROFILE} -- Neo4j oferuje szczegółową analizę
-    planów wykonania zapytań Cypher przez \texttt{EXPLAIN} (plan bez
-    wykonania) i \texttt{PROFILE} (plan z rzeczywistymi statystykami),
-    co pozwala diagnozować i optymalizować wolne zapytania.
-    \item \textbf{APOC} -- biblioteka ponad 450 procedur i funkcji
-    rozszerzających Cypher, obejmujących import/eksport danych, operacje
-    na grafie, integracje z zewnętrznymi API i narzędzia do refaktoryzacji
-    schematu.
-    \item \textbf{Graph Data Science Playground} -- interaktywne środowisko
-    do eksperymentowania z algorytmami grafowymi bezpośrednio w przeglądarce,
-    bez konieczności pisania kodu.
-    \item \textbf{Cypher jako standard} -- język Cypher jest standaryzowany
-    przez openCypher i implementowany przez inne silniki grafowe (RedisGraph,
-    Memgraph, AgensGraph), co ułatwia ewentualną migrację.
-\end{itemize}
+Neo4j Browser stanowi wbudowany interfejs webowy umożliwiający interaktywne
+wykonywanie zapytań w języku Cypher wraz z wizualizacją wyników w postaci
+grafu. Narzędzie pozwala na eksplorację struktury danych bez konieczności
+instalowania dodatkowych komponentów. Neo4j Bloom umożliwia wizualną
+eksplorację grafu przez użytkowników biznesowych, niewymagającą znajomości
+języka Cypher. Wyszukiwanie wzorców oraz przeglądanie powiązań realizowane
+są w intuicyjnym interfejsie graficznym.
+
+Mechanizmy diagnostyczne obejmują instrukcje \texttt{EXPLAIN}, prezentującą
+plan wykonania zapytania bez jego rzeczywistego uruchomienia, oraz
+\texttt{PROFILE}, udostępniającą plan wraz z rzeczywistymi statystykami
+wykonania. Pozwala to na precyzyjne diagnozowanie zapytań o niskiej wydajności
+oraz ich systematyczną optymalizację. Biblioteka APOC zawiera ponad
+czterysta pięćdziesiąt procedur oraz funkcji rozszerzających możliwości
+języka Cypher, obejmujących między innymi import i eksport danych, operacje
+na strukturze grafu, integracje z zewnętrznymi interfejsami programistycznymi
+oraz narzędzia wspierające refaktoryzację schematu.
+
+Komponent Graph Data Science Playground stanowi interaktywne środowisko
+umożliwiające eksperymentowanie z algorytmami grafowymi bezpośrednio
+w przeglądarce internetowej, bez konieczności tworzenia kodu źródłowego.
+Język Cypher został ustandaryzowany w ramach inicjatywy openCypher
+i zaimplementowany przez inne silniki grafowe, w tym RedisGraph, Memgraph
+oraz AgensGraph, co istotnie ułatwia ewentualną migrację pomiędzy systemami
+bazodanowymi tej klasy.
