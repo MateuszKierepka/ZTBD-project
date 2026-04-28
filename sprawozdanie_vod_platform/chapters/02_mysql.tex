@@ -1,0 +1,192 @@
+MySQL to otwartoźródłowy relacyjny system zarządzania bazą danych rozwijany
+od 1995 roku, początkowo przez szwedzką firmę MySQL AB, a obecnie będący
+własnością Oracle Corporation. Obecna linia 8.0.x (stan na 2025~r.) oferuje
+pełną obsługę transakcji ACID, silnik składowania InnoDB jako domyślny oraz
+szeroką zgodność ze standardem SQL. MySQL jest dystrybuowany w dwóch wariantach
+licencyjnych: GPL (Community Edition, bezpłatna) oraz komercyjnym (Enterprise
+Edition, z dodatkowymi funkcjami bezpieczeństwa i narzędziami zarządzania).
+Ze względu na dominującą pozycję w ekosystemie LAMP oraz domyślne wsparcie
+ze strony platform takich jak WordPress czy Drupal, MySQL pozostaje jednym
+z najszerzej stosowanych silników relacyjnych na świecie.
+
+\subsection{Skalowalność}
+
+PostgreSQL dobrze radzi sobie z rosnącą ilością danych, przede wszystkim przez
+dodawanie zasobów do jednego serwera. Silnik potrafi efektywnie wykorzystać
+dużą ilość RAM, wiele rdzeni procesora i szybkie dyski. Zapytania mogą być
+wykonywane równolegle przez kilku pracowników jednocześnie, co szczególnie
+przyspiesza operacje na dużych zbiorach danych. Dostępne jest też wbudowane
+partycjonowanie tabel, czyli podział jednej dużej tabeli na mniejsze kawałki
+według zakresu dat, wartości lub klucza, dzięki czemu baza nie przeszukuje
+całej tabeli, tylko te partycje, które są potrzebne.
+
+Skalowanie horyzontalne, czyli rozbudowa przez dodawanie kolejnych serwerów,
+nie jest natywną cechą PostgreSQL. Można to osiągnąć przez replikację do
+serwerów odczytu lub przez zewnętrzne rozszerzenia jak Citus, które dodają
+automatyczny podział danych między węzły. Warto też pamiętać, że każde
+połączenie z bazą to osobny proces systemowy, więc przy dużej liczbie
+użytkowników zaleca się stosowanie pośredników jak PgBouncer.
+
+\subsection{Bezpieczeństwo}
+
+PostgreSQL oferuje rozbudowaną kontrolę dostępu. To kto i skąd może się
+połączyć z bazą konfiguruje się w pliku \texttt{pg\_hba.conf}, gdzie definiuje
+się kombinacje bazy, użytkownika i adresu IP oraz metodę uwierzytelniania.
+Obsługiwane są hasła (domyślnie szyfrowane przez scram-sha-256), certyfikaty
+klienckie, Kerberos, LDAP i inne. Połączenie może być szyfrowane przez SSL/TLS.
+
+Uprawnienia do obiektów bazodanowych zarządza się przez role, które mogą
+pełnić funkcję zarówno użytkowników jak i grup. Od wersji 9.5 dostępne jest
+też Row-Level Security, które pozwala filtrować wiersze zwracane przez zapytanie
+w zależności od tego, kto je wykonuje. Przydaje się to szczególnie w aplikacjach
+obsługujących wielu klientów na jednej instancji bazy.
+
+\subsection{Awaryjność}
+
+Podstawą trwałości danych jest mechanizm Write-Ahead Log (WAL). Każda zmiana
+trafia najpierw do dziennika, a dopiero potem do właściwych plików. Dzięki temu
+w przypadku awarii serwera baza po restarcie automatycznie odtwarza stan sprzed
+problemu i żadna zatwierdzona transakcja nie jest tracona.
+
+Na bazie WAL działają mechanizmy replikacji i kopii zapasowych. Replikacja
+strumieniowa pozwala utrzymywać aktualną kopię bazy na osobnym serwerze,
+gotową do przejęcia ruchu w razie awarii. Point-in-Time Recovery umożliwia
+odtworzenie bazy do dowolnego momentu w przeszłości. Automatyczny failover
+realizuje się przez zewnętrzne narzędzia jak Patroni.
+
+\subsection{Migracje}
+
+Do przenoszenia danych między instancjami PostgreSQL służą \texttt{pg\_dump}
+i \texttt{pg\_restore}, które tworzą przenośne zrzuty logiczne działające między
+różnymi wersjami. Przy aktualizacji wersji na tym samym serwerze można użyć
+\texttt{pg\_upgrade}, które nie przenosi danych, tylko aktualizuje struktury.
+Migrację z innych silników, na przykład z MySQL, ułatwia narzędzie pgloader.
+
+Wersjonowanie schematu bazy, czyli zarządzanie kolejnymi zmianami struktury
+tabel, realizuje się przez zewnętrzne narzędzia jak Flyway lub Liquibase, albo
+przez mechanizmy wbudowane w frameworki aplikacyjne. Warto podkreślić, że
+PostgreSQL obsługuje transakcyjne DDL, co oznacza, że błędna migracja może
+zostać wycofana tak jak zwykła transakcja.
+
+\subsection{Integracje}
+
+PostgreSQL posiada sterowniki dla praktycznie każdego popularnego języka
+programowania i jest wspierany przez wszystkie główne frameworki ORM. Narzędzia
+do analizy danych i wizualizacji jak Tableau, Grafana czy Metabase mają natywne
+połączenia z PostgreSQL.
+
+Ciekawą funkcją są Foreign Data Wrappers (FDW), które pozwalają odpytywać
+zewnętrzne źródła danych, takie jak inne bazy czy pliki CSV, jakby były
+zwykłymi tabelami. PostgreSQL jest też dostępny jako usługa zarządzana na
+AWS, Google Cloud i Azure.
+
+
+\subsection{Obszary biznesowe}
+
+MySQL jest szczególnie mocno zakorzeniony w zastosowaniach webowych i jest
+domyślnym wyborem dla wielu popularnych platform. Sprawdza się najlepiej
+w następujących obszarach:
+
+\begin{itemize}
+    \item \textbf{Aplikacje webowe i CMS} -- WordPress, Drupal, Joomla oraz
+    większość popularnych platform e-commerce jak Magento czy PrestaShop
+    używa MySQL jako domyślnego backendu. Szacuje się, że MySQL napędza
+    ponad 60\% stron internetowych korzystających z relacyjnych baz danych.
+    \item \textbf{E-commerce} -- prostota konfiguracji, szeroka dostępność
+    hostingu i dojrzałość ekosystemu sprawiają, że MySQL jest pierwszym
+    wyborem dla sklepów internetowych małej i średniej skali.
+    \item \textbf{Systemy SaaS} -- dzięki modelowi wątkowemu i dobrej
+    wydajności przy dużej liczbie równoczesnych połączeń MySQL sprawdza się
+    w aplikacjach obsługujących wielu użytkowników jednocześnie.
+    \item \textbf{Startupy i projekty webowe} -- niska bariera wejścia,
+    ogromna baza poradników i gotowych rozwiązań oraz dostępność na
+    praktycznie każdym hostingu współdzielonym sprawiają, że MySQL
+    jest naturalnym pierwszym wyborem dla nowych projektów.
+    \item \textbf{Systemy analityki webowej} -- MySQL bywa stosowany
+    do przechowywania i analizy logów, statystyk odwiedzin i danych
+    behawioralnych użytkowników w zastosowaniach, gdzie nie jest wymagana
+    zaawansowana analityka.
+\end{itemize}
+
+\subsection{Zalety}
+
+\begin{itemize}
+    \item \textbf{Prostota i niska bariera wejścia} -- MySQL jest łatwy
+    w instalacji i konfiguracji. Dostępny jest na praktycznie każdym
+    hostingu współdzielonym, co czyni go najbardziej dostępnym silnikiem
+    relacyjnym dla początkujących.
+    \item \textbf{Bardzo duży ekosystem} -- ogromna baza dokumentacji,
+    poradników, gotowych narzędzi i społeczności sprawia, że znalezienie
+    pomocy przy problemach jest łatwe.
+    \item \textbf{Model wątkowy} -- w przeciwieństwie do PostgreSQL każde
+    połączenie obsługiwane jest przez lekki wątek zamiast osobnego procesu,
+    co zmniejsza narzut pamięciowy przy dużej liczbie połączeń.
+    \item \textbf{Wysoka wydajność przy prostych zapytaniach} -- MySQL
+    jest zoptymalizowany pod kątem szybkich odczytów i prostych operacji
+    CRUD, co sprawdza się w typowych zastosowaniach webowych.
+    \item \textbf{MySQL InnoDB Cluster} -- wbudowane rozwiązanie wysokiej
+    dostępności z automatycznym failoverem bez potrzeby zewnętrznych narzędzi.
+    \item \textbf{Szeroka dostępność w chmurze} -- dostępny jako usługa
+    zarządzana na AWS, Google Cloud i Azure, a także w wariancie Aurora
+    oferującym znacznie wyższą wydajność przy zachowaniu kompatybilności.
+    \item \textbf{Kompatybilność} -- MySQL jest kompatybilny z wieloma
+    narzędziami i frameworkami, a jego dialekt SQL jest szeroko znany
+    wśród programistów.
+\end{itemize}
+
+\subsection{Wady i ograniczenia}
+
+\begin{itemize}
+    \item \textbf{Słabsze wsparcie standardu SQL} -- MySQL historycznie
+    odchodzi od standardu SQL w wielu miejscach, co może powodować
+    problemy przy migracji zapytań między silnikami. Przykładem jest
+    domyślny tryb \texttt{ONLY\_FULL\_GROUP\_BY} wyłączony w starszych
+    wersjach, który pozwalał na niepoprawne zapytania GROUP BY.
+    \item \textbf{Brak transakcyjnego DDL} -- instrukcje \texttt{ALTER TABLE}
+    czy \texttt{CREATE TABLE} niejawnie zatwierdzają bieżącą transakcję,
+    co oznacza, że błędna migracja schematu nie może zostać wycofana
+    przez \texttt{ROLLBACK}.
+    \item \textbf{Ograniczona analityka} -- MySQL nie obsługuje wielu
+    zaawansowanych funkcji analitycznych SQL takich jak pełne wsparcie
+    dla funkcji okienkowych (do niedawna), \texttt{GROUPING SETS},
+    \texttt{CUBE} czy \texttt{ROLLUP}. PostgreSQL jest znacznie silniejszy
+    w zastosowaniach HTAP.
+    \item \textbf{Brak Row-Level Security} -- filtrowanie wierszy per
+    użytkownik musi być implementowane na poziomie aplikacji lub widoków,
+    co zwiększa złożoność systemów wielodostępnych.
+    \item \textbf{Słabsze typy danych} -- MySQL oferuje uboższy katalog
+    typów w porównaniu do PostgreSQL. Brakuje natywnych typów zakresowych,
+    tablic czy zaawansowanych typów geometrycznych bez zewnętrznych rozszerzeń.
+    \item \textbf{Właściciel korporacyjny} -- MySQL należy do Oracle,
+    co dla części organizacji jest czynnikiem ryzyka przy wyborze silnika
+    dla krytycznych systemów. Część zaawansowanych funkcji dostępna jest
+    wyłącznie w płatnej Enterprise Edition.
+    \item \textbf{Ograniczone indeksowanie} -- MySQL obsługuje B-tree,
+    Hash i FULLTEXT, ale brakuje zaawansowanych typów indeksów dostępnych
+    w PostgreSQL (GIN, GiST, BRIN), co ogranicza możliwości przy
+    wyszukiwaniu pełnotekstowym i danych przestrzennych.
+\end{itemize}
+
+\subsection{Udogodnienia}
+
+\begin{itemize}
+    \item \textbf{MySQL Workbench} -- oficjalne graficzne narzędzie do
+    administracji, projektowania schematów (wizualny edytor ERD), migracji
+    i profilowania zapytań. Dostępne na Windows, macOS i Linux.
+    \item \textbf{Narzędzia CLI} -- \texttt{mysql} (interaktywny klient),
+    \texttt{mysqldump} (eksport), \texttt{mysqlcheck} (weryfikacja tabel),
+    \texttt{mysqladmin} (administracja serwerem).
+    \item \textbf{EXPLAIN i query profiler} -- MySQL oferuje \texttt{EXPLAIN}
+    i \texttt{EXPLAIN ANALYZE} (od wersji 8.0) do analizy planów wykonania,
+    a także \texttt{performance\_schema} i \texttt{sys} schema do
+    monitorowania wydajności na poziomie zapytań, wątków i operacji I/O.
+    \item \textbf{JSON} -- od wersji 5.7 MySQL obsługuje natywny typ JSON
+    z operatorami ścieżkowymi (\texttt{->}, \texttt{->>}) i możliwością
+    tworzenia indeksów na wygenerowanych kolumnach opartych o pola JSON.
+    \item \textbf{Generowane kolumny} -- kolumny wyliczane automatycznie
+    na podstawie wyrażenia (wirtualne lub przechowywane), przydatne do
+    indeksowania fragmentów JSON lub wyrażeń obliczeniowych.
+    \item \textbf{Szeroka dostępność hostingu} -- MySQL jest dostępny
+    na praktycznie każdym hostingu współdzielonym i VPS, co czyni go
+    najbardziej dostępnym silnikiem relacyjnym pod względem infrastruktury.
+\end{itemize}

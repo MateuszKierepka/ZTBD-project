@@ -7,144 +7,78 @@ PostgreSQL jest dystrybuowany na liberalnej licencji PostgreSQL License
 (w duchu zbliżonym do BSD/MIT), co dopuszcza dowolne wykorzystanie komercyjne
 bez opłat licencyjnych.
 
+
+
 \subsection{Skalowalność}
-
-PostgreSQL bardzo dobrze skaluje się \textit{w pionie} -- silnik efektywnie
-wykorzystuje duże ilości pamięci RAM (dziesiątki do setek gigabajtów),
-wielordzeniowe CPU oraz szybkie dyski NVMe. Od wersji~9.6 zapytania mogą
-być wykonywane równolegle przez kilku workerów (\textit{parallel sequential
-scan}, \textit{parallel join}, \textit{parallel aggregate}), co znacząco
-przyspiesza analitykę na dużych tabelach. Wbudowana \textbf{deklaratywna
-partycjonowanie} (od wersji~10) obsługuje partycje zakresowe (\textit{range}),
-listowe (\textit{list}) oraz hashowe, w połączeniu z \textit{partition pruning}
-ograniczającym skan tylko do tych partycji, które spełniają warunki zapytania.
-
-Skalowanie \textit{w poziomie} nie jest natywną cechą silnika -- PostgreSQL
-nie ma wbudowanego shardingu. W praktyce stosuje się trzy podejścia:
-replikację \textit{streaming replication} (asynchroniczną lub synchroniczną)
-z gorącymi replikami odczytu (\textit{hot standby}), replikację logiczną
-(od wersji~10) pozwalającą na selektywny transfer tabel między klastrami,
-oraz rozszerzenia takie jak \textbf{Citus} zamieniające PostgreSQL w rozproszoną
-bazę z automatycznym shardingiem. Dla obsługi dużej liczby jednoczesnych
-połączeń często używa się poolerów (\texttt{pgbouncer}, \texttt{pgpool-II}),
-bo każde połączenie do PostgreSQL oznacza oddzielny proces systemowy -- relatywnie
-drogi w porównaniu do modelu wątkowego MySQL.
-
-Limity techniczne: pojedyncza tabela może mieć do 32~TB danych, 1600 kolumn
-oraz praktycznie nieograniczoną liczbę wierszy.
-
+ 
+PostgreSQL dobrze radzi sobie z rosnącą ilością danych, przede wszystkim przez
+dodawanie zasobów do jednego serwera. Silnik potrafi efektywnie wykorzystać
+dużą ilość RAM, wiele rdzeni procesora i szybkie dyski. Zapytania mogą być
+wykonywane równolegle przez kilku pracowników jednocześnie, co szczególnie
+przyspiesza operacje na dużych zbiorach danych. Dostępne jest też wbudowane
+partycjonowanie tabel, czyli podział jednej dużej tabeli na mniejsze kawałki
+według zakresu dat, wartości lub klucza, dzięki czemu baza nie przeszukuje
+całej tabeli, tylko te partycje, które są potrzebne.
+ 
+Skalowanie horyzontalne, czyli rozbudowa przez dodawanie kolejnych serwerów,
+nie jest natywną cechą PostgreSQL. Można to osiągnąć przez replikację do
+serwerów odczytu lub przez zewnętrzne rozszerzenia jak Citus, które dodają
+automatyczny podział danych między węzły. Warto też pamiętać, że każde
+połączenie z bazą to osobny proces systemowy, więc przy dużej liczbie
+użytkowników zaleca się stosowanie pośredników jak PgBouncer.
+ 
 \subsection{Bezpieczeństwo}
-
-PostgreSQL oferuje wielowarstwowy model bezpieczeństwa. Kontrola dostępu
-do serwera jest konfigurowana deklaratywnie w pliku \texttt{pg\_hba.conf}
-(\textit{host-based authentication}) -- każdy wpis dopasowuje kombinację
-bazy, roli, adresu IP i wybiera metodę uwierzytelniania. Obsługiwane mechanizmy
-obejmują hasła (\texttt{scram-sha-256} jako domyślne, bezpieczniejsze niż
-wycofywane \texttt{md5}), certyfikaty klienckie (\texttt{cert}),
-Kerberos/GSSAPI, SSPI (Windows Active Directory), LDAP, RADIUS oraz PAM.
-Komunikacja z klientem może być szyfrowana SSL/TLS -- serwer może wymuszać
-szyfrowanie per kombinacja użytkownik-baza-źródło.
-
-Na poziomie obiektów baza implementuje klasyczny model ról (RBAC) -- role
-są zarówno użytkownikami, jak i grupami, a uprawnienia przyznawane są
-poleceniami \texttt{GRANT}/\texttt{REVOKE} na bazach, schematach, tabelach,
-kolumnach, sekwencjach i funkcjach. Od wersji~9.5 dostępne jest
-\textbf{Row-Level Security (RLS)} -- polityki filtrujące wiersze zwracane
-i modyfikowane przez każde zapytanie w zależności od bieżącej roli, co jest
-mechanizmem często wykorzystywanym w aplikacjach wielodostępnych
-(\textit{multi-tenant}).
-
-Do rejestracji zdarzeń audytowych służy rozszerzenie \textbf{pgaudit}
-(szczegółowe logowanie DDL/DML/ROLE na potrzeby wymagań regulacyjnych
-typu SOX, HIPAA, RODO), a do szyfrowania pól -- \textbf{pgcrypto}
-(funkcje haszujące i symetryczne/asymetryczne szyfrowanie na poziomie
-kolumny). Szyfrowanie całej bazy \textit{at rest} (TDE) nie jest natywne --
-realizowane jest zwykle przez szyfrowanie systemu plików lub wolumenu
-(LUKS, dm-crypt, AWS EBS encryption).
-
+ 
+PostgreSQL oferuje rozbudowaną kontrolę dostępu. To kto i skąd może się
+połączyć z bazą konfiguruje się w pliku \texttt{pg\_hba.conf}, gdzie definiuje
+się kombinacje bazy, użytkownika i adresu IP oraz metodę uwierzytelniania.
+Obsługiwane są hasła (domyślnie szyfrowane przez scram-sha-256), certyfikaty
+klienckie, Kerberos, LDAP i inne. Połączenie może być szyfrowane przez SSL/TLS.
+ 
+Uprawnienia do obiektów bazodanowych zarządza się przez role, które mogą
+pełnić funkcję zarówno użytkowników jak i grup. Od wersji 9.5 dostępne jest
+też Row-Level Security, które pozwala filtrować wiersze zwracane przez zapytanie
+w zależności od tego, kto je wykonuje. Przydaje się to szczególnie w aplikacjach
+obsługujących wielu klientów na jednej instancji bazy.
+ 
 \subsection{Awaryjność}
-
-Fundamentem trwałości i odtwarzania PostgreSQL jest \textbf{Write-Ahead Log}
-(WAL) -- każda modyfikacja danych najpierw trafia do dziennika, a dopiero
-potem może być zapisana do właściwych plików tabel. Mechanizm gwarantuje
-własność \textbf{ACID} (atomicity, consistency, isolation, durability)
-transakcji nawet w przypadku awarii serwera, zanikania zasilania czy
-padnięcia sprzętu -- przy kolejnym starcie silnik automatycznie odtwarza
-niedokończone transakcje (\textit{crash recovery}).
-
-Na bazie WAL zbudowane są mechanizmy replikacji i odtwarzania:
-
-\begin{itemize}
-    \item \textbf{Streaming replication} -- asynchroniczna lub synchroniczna
-    replikacja fizyczna. Replika jest identycznym bit-po-bicie obrazem master-a
-    i może obsługiwać zapytania odczytu (tzw.~\textit{hot standby}).
-    \item \textbf{Point-in-Time Recovery (PITR)} -- archiwizacja WAL do
-    zewnętrznego magazynu (S3, dysk sieciowy) i odtworzenie bazy do dowolnego
-    momentu w przeszłości, z dokładnością do pojedynczej transakcji.
-    \item \textbf{Replikacja logiczna} (od wersji~10) -- transfer zmian
-    na poziomie tabel i wierszy, z możliwością replikowania tylko wybranych
-    obiektów między klastrami o różnych wersjach lub schematach.
-    \item \textbf{Base backup} -- \texttt{pg\_basebackup} (fizyczny) oraz
-    \texttt{pg\_dump}/\texttt{pg\_dumpall} (logiczny, przenośny między
-    wersjami i architekturami).
-\end{itemize}
-
-Wysoka dostępność (HA) w praktyce produkcyjnej opiera się na zewnętrznych
-narzędziach orkiestrujących automatyczny failover: \textbf{Patroni} (oparty
-o etcd/Consul/ZooKeeper), \textbf{repmgr} oraz \textbf{pg\_auto\_failover}
-(narzędzie Citus Data/Microsoft).
-
+ 
+Podstawą trwałości danych jest mechanizm Write-Ahead Log (WAL). Każda zmiana
+trafia najpierw do dziennika, a dopiero potem do właściwych plików. Dzięki temu
+w przypadku awarii serwera baza po restarcie automatycznie odtwarza stan sprzed
+problemu i żadna zatwierdzona transakcja nie jest tracona.
+ 
+Na bazie WAL działają mechanizmy replikacji i kopii zapasowych. Replikacja
+strumieniowa pozwala utrzymywać aktualną kopię bazy na osobnym serwerze,
+gotową do przejęcia ruchu w razie awarii. Point-in-Time Recovery umożliwia
+odtworzenie bazy do dowolnego momentu w przeszłości. Automatyczny failover
+realizuje się przez zewnętrzne narzędzia jak Patroni.
+ 
 \subsection{Migracje}
-
-PostgreSQL udostępnia trzy klasy narzędzi migracyjnych. Do migracji danych
-między instancjami PostgreSQL służy \texttt{pg\_dump}/\texttt{pg\_restore}
-(zrzuty logiczne -- obsługują migracje między różnymi wersjami majorowymi
-i architekturami sprzętowymi) oraz \texttt{pg\_upgrade} (w-miejscu, bez
-przenoszenia danych -- operuje na plikach bazy i aktualizuje katalog systemowy).
-Od wersji~10 replikacja logiczna umożliwia \textit{zero-downtime} migracje
-major-version poprzez równoległą replikę utrzymywaną na nowej wersji, na którą
-aplikacja jest przełączana w momencie dogonienia zmian.
-
-Do migracji \textbf{z innych silników} najpopularniejszym narzędziem jest
-\textbf{pgloader} -- wspiera bezpośredni import z MySQL, SQLite, MS~SQL Server,
-a także z plików CSV, DBF i JSON. W środowiskach chmurowych funkcję
-migracji heterogenicznych pełnią usługi zarządzane (AWS Database Migration
-Service, Google Database Migration Service, Azure Database Migration Service).
-
-Wersjonowanie schematu realizowane jest narzędziami zewnętrznymi
-niezależnymi od silnika -- \textbf{Flyway}, \textbf{Liquibase},
-\textbf{Sqitch} czy rozwiązania wbudowane w frameworki (Django migrations,
-Alembic dla SQLAlchemy, Active Record migrations w Ruby on Rails, Prisma
-Migrate). Warto odnotować, że PostgreSQL obsługuje \textbf{transakcyjne DDL} --
-\texttt{CREATE TABLE}, \texttt{ALTER TABLE} i \texttt{DROP TABLE} mogą być
-wycofane w ramach \texttt{ROLLBACK}, co znacząco zmniejsza ryzyko błędnych
-migracji (w MySQL większość instrukcji DDL niejawnie commituje transakcję).
-
+ 
+Do przenoszenia danych między instancjami PostgreSQL służą \texttt{pg\_dump}
+i \texttt{pg\_restore}, które tworzą przenośne zrzuty logiczne działające między
+różnymi wersjami. Przy aktualizacji wersji na tym samym serwerze można użyć
+\texttt{pg\_upgrade}, które nie przenosi danych, tylko aktualizuje struktury.
+Migrację z innych silników, na przykład z MySQL, ułatwia narzędzie pgloader.
+ 
+Wersjonowanie schematu bazy, czyli zarządzanie kolejnymi zmianami struktury
+tabel, realizuje się przez zewnętrzne narzędzia jak Flyway lub Liquibase, albo
+przez mechanizmy wbudowane w frameworki aplikacyjne. Warto podkreślić, że
+PostgreSQL obsługuje transakcyjne DDL, co oznacza, że błędna migracja może
+zostać wycofana tak jak zwykła transakcja.
+ 
 \subsection{Integracje}
-
-PostgreSQL udostępnia drivery dla praktycznie każdego popularnego języka
-programowania: \textbf{libpq} (C/C++), JDBC (Java), Npgsql (.NET),
-psycopg/asyncpg (Python), pg/pgx (Go), pq/pg-pool (Node.js), Rust
-(sqlx, tokio-postgres), Ruby (pg), PHP (PDO\_PGSQL). W warstwie ORM wspierany
-jest przez wszystkie mainstreamowe frameworki: Django ORM, SQLAlchemy,
-Hibernate, Entity Framework, ActiveRecord, Prisma, TypeORM, GORM.
-Narzędzia BI i analityczne (Tableau, Power BI, Metabase, Apache Superset,
-Grafana, Looker) mają natywne konektory.
-
-Szczególną cechą PostgreSQL są \textbf{Foreign Data Wrappers} (FDW) --
-mechanizm pozwalający odpytywać dane w zewnętrznych źródłach tak, jakby
-były natywnymi tabelami. Dostępne FDW obejmują \texttt{postgres\_fdw}
-(dostęp do innych instancji PostgreSQL), \texttt{mysql\_fdw}, \texttt{mongo\_fdw},
-\texttt{redis\_fdw}, \texttt{file\_fdw} (pliki CSV), \texttt{jdbc\_fdw}
-oraz wrappery do S3, Kafki i systemów plików Hadoop. Do integracji
-strumieniowej (CDC -- \textit{Change Data Capture}) wykorzystuje się
-\textbf{Debezium} konsumujący replikację logiczną i publikujący zmiany
-na Apache Kafka.
-
-W chmurze PostgreSQL jest dostępny w modelu zarządzanym na wszystkich
-trzech dużych platformach: AWS (RDS for PostgreSQL, Aurora PostgreSQL-Compatible),
-Google Cloud (Cloud SQL, AlloyDB), Azure (Azure Database for PostgreSQL --
-w wersjach Flexible Server oraz Hyperscale/Citus).
+ 
+PostgreSQL posiada sterowniki dla praktycznie każdego popularnego języka
+programowania i jest wspierany przez wszystkie główne frameworki ORM. Narzędzia
+do analizy danych i wizualizacji jak Tableau, Grafana czy Metabase mają natywne
+połączenia z PostgreSQL.
+ 
+Ciekawą funkcją są Foreign Data Wrappers (FDW), które pozwalają odpytywać
+zewnętrzne źródła danych, takie jak inne bazy czy pliki CSV, jakby były
+zwykłymi tabelami. PostgreSQL jest też dostępny jako usługa zarządzana na
+AWS, Google Cloud i Azure.
 
 \subsection{Obszary biznesowe}
 

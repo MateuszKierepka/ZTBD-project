@@ -1,0 +1,195 @@
+MongoDB to otwartoźródłowy dokumentowy system zarządzania bazą danych
+rozwijany od 2007 roku przez firmę MongoDB Inc. (dawniej 10gen). Obecna
+linia 7.x (stan na 2025~r.) należy do kategorii baz NoSQL i zamiast
+tabel z wierszami przechowuje dane w postaci dokumentów BSON (Binary JSON),
+które mogą mieć dowolną, zagnieżdżoną strukturę. MongoDB jest dostępny
+na licencji SSPL (Server Side Public License) dla wersji Community oraz
+komercyjnej dla wersji Enterprise.
+
+\subsection{Skalowalność}
+
+MongoDB zostało zaprojektowane z myślą o skalowalności poziomej jako
+natywnej cesze silnika. Wbudowany mechanizm shardingu pozwala automatycznie
+rozdzielać dane między wiele węzłów na podstawie wybranego klucza podziału
+(shard key), co umożliwia obsługę zbiorów danych przekraczających pojemność
+pojedynczego serwera. Warstwa routingu (mongos) jest transparentna dla
+aplikacji -- zapytania są kierowane do właściwych węzłów automatycznie.
+
+Replikacja realizowana jest przez Replica Set, czyli grupę węzłów składającą
+się z jednego primary i co najmniej dwóch secondary. Wszystkie zapisy trafiają
+do primary, skąd są asynchronicznie replikowane do secondary. Odczyty mogą
+być opcjonalnie kierowane do secondary, co odciąża primary przy
+obciążeniach zdominowanych przez odczyty. Skalowanie pionowe również jest
+obsługiwane -- MongoDB efektywnie wykorzystuje pamięć RAM przez agresywne
+cachowanie często używanych danych w pamięci operacyjnej.
+
+\subsection{Bezpieczeństwo}
+
+MongoDB oferuje wielowarstwowy model bezpieczeństwa. Uwierzytelnianie
+obsługuje hasła (domyślnie SCRAM-SHA-256), certyfikaty X.509 oraz
+integrację z LDAP i Kerberos (w Enterprise Edition). Kontrola dostępu
+oparta jest na rolach (RBAC) -- wbudowane role obejmują odczyt, zapis,
+administrację i inne, a użytkownik może definiować własne role z precyzyjnymi
+uprawnieniami do kolekcji i operacji.
+
+Komunikacja między klientem a serwerem oraz między węzłami klastra może
+być szyfrowana przez TLS. MongoDB Enterprise oferuje szyfrowanie danych
+w spoczynku (Encrypted Storage Engine) oraz zaawansowany audyt operacji.
+Od wersji 4.2 dostępne jest też szyfrowanie na poziomie pola (Field Level
+Encryption), które pozwala szyfrować wybrane pola dokumentu po stronie
+klienta jeszcze przed wysłaniem do serwera -- serwer nigdy nie widzi
+niezaszyfrowanych wartości.
+
+\subsection{Awaryjność}
+
+Podstawą trwałości danych w MongoDB jest dziennik (journal), który działa
+podobnie do WAL w silnikach relacyjnych -- każda operacja jest najpierw
+zapisywana do dziennika, co gwarantuje możliwość odtworzenia stanu po
+awarii. Silnik składowania WiredTiger (domyślny od wersji 3.2) obsługuje
+transakcje ACID na poziomie dokumentu natywnie, a od wersji 4.0 również
+transakcje wielodokumentowe i wielokolekcyjne.
+
+Replica Set zapewnia automatyczny failover -- jeśli primary przestanie
+odpowiadać, węzły secondary przeprowadzają wybory i jeden z nich przejmuje
+rolę primary, zazwyczaj w ciągu kilku do kilkunastu sekund. Proces ten
+jest w pełni automatyczny i transparentny dla aplikacji korzystających
+ze sterowników obsługujących retryable writes. Kopie zapasowe można
+tworzyć przez \texttt{mongodump} (logiczne) lub snapshoty systemu plików
+(fizyczne, wymagają zamrożenia operacji zapisu).
+
+\subsection{Migracje}
+
+Do eksportu i importu danych służą narzędzia \texttt{mongodump} i
+\texttt{mongorestore} (format BSON) oraz \texttt{mongoexport} i
+\texttt{mongoimport} (format JSON/CSV, bardziej przenośny między systemami).
+Migracja między wersjami MongoDB jest zazwyczaj prosta dzięki rolling
+upgrade -- węzły klastra aktualizuje się po kolei bez zatrzymywania całego
+systemu.
+
+Migracja z relacyjnych baz danych jest bardziej złożona, bo wymaga
+przeprojektowania schematu z modelu tabelarycznego na dokumentowy.
+W praktyce często nie jest to proste przeniesienie danych, lecz zmiana
+podejścia do modelowania -- na przykład połączenie kilku tabel w jeden
+zagnieżdżony dokument. Narzędzia takie jak Mongify czy własne skrypty ETL
+wspierają ten proces. Wersjonowanie schematu dokumentów, które z natury
+jest elastyczne, realizuje się przez zewnętrzne narzędzia lub własną logikę
+walidacji w aplikacji (np. przez JSON Schema Validation dostępne w MongoDB).
+
+\subsection{Integracje}
+
+MongoDB oferuje oficjalne sterowniki dla wszystkich popularnych języków
+programowania: Python (pymongo, motor), Node.js (mongodb, mongoose),
+Java, Go, C\#/.NET, Ruby, PHP i innych. Mongoose (Node.js) i MongoEngine
+(Python) są najpopularniejszymi bibliotekami ODM (Object Document Mapper)
+ułatwiającymi pracę z dokumentami.
+
+Narzędzia analityczne integrują się z MongoDB przez konektor BI (MongoDB
+Connector for BI), który tłumaczy zapytania SQL na operacje MongoDB,
+co pozwala na użycie narzędzi jak Tableau czy Power BI bez modyfikacji.
+MongoDB Atlas (chmurowa wersja zarządzana) jest dostępny na AWS, Google
+Cloud i Azure i oferuje dodatkowe funkcje jak Atlas Search (pełnotekstowe
+wyszukiwanie oparte na Apache Lucene), Atlas Vector Search (wyszukiwanie
+wektorowe dla zastosowań AI) oraz Charts (wbudowana wizualizacja danych).
+
+\subsection{Obszary biznesowe}
+
+MongoDB najlepiej sprawdza się w scenariuszach, gdzie dane mają zmienną
+lub hierarchiczną strukturę i gdzie elastyczność schematu jest istotna:
+
+\begin{itemize}
+    \item \textbf{Platformy treści i katalogi produktów} -- dokumentowy
+    model danych pozwala przechowywać produkty o różnych atrybutach
+    w jednej kolekcji bez konieczności tworzenia dziesiątek tabel lub
+    kolumn nullable. Stosowany przez serwisy takie jak eBay czy Etsy.
+    \item \textbf{Aplikacje mobilne i IoT} -- elastyczny schemat i
+    natywna obsługa JSON ułatwiają przechowywanie danych o zmiennej
+    strukturze napływających z urządzeń mobilnych i sensorów.
+    \item \textbf{Systemy zarządzania treścią (CMS)} -- zagnieżdżone
+    dokumenty dobrze odwzorowują hierarchiczną strukturę artykułów,
+    komentarzy i metadanych w jednym obiekcie.
+    \item \textbf{Analityka w czasie rzeczywistym} -- agregacje MongoDB
+    i możliwość przechowywania surowych danych zdarzeń bez narzutu
+    normalizacji przyspieszają budowę pipeline'ów analitycznych.
+    \item \textbf{Personalizacja i profile użytkowników} -- zmienna
+    struktura dokumentu pozwala przechowywać preferencje, historię
+    i ustawienia różnych użytkowników bez modyfikacji schematu.
+\end{itemize}
+
+\subsection{Zalety}
+
+\begin{itemize}
+    \item \textbf{Elastyczny schemat} -- dokumenty w kolekcji mogą mieć
+    różną strukturę. Dodanie nowego pola nie wymaga migracji schematu,
+    co przyspiesza iteracje w fazie rozwoju aplikacji.
+    \item \textbf{Natywny model dokumentowy} -- zagnieżdżone dokumenty
+    i tablice pozwalają przechowywać powiązane dane razem, eliminując
+    potrzebę kosztownych JOIN-ów przy odczycie. Jeden dokument to często
+    kompletny obiekt biznesowy.
+    \item \textbf{Natywny sharding} -- skalowanie poziome jest wbudowaną
+    cechą silnika, a nie rozwiązaniem zewnętrznym jak w PostgreSQL czy MySQL.
+    \item \textbf{Wysoka wydajność zapisu} -- brak narzutu normalizacji
+    i możliwość aktualizacji zagnieżdżonych pól przez operatory
+    (\texttt{\$set}, \texttt{\$push}, \texttt{\$inc}) bez przepisywania
+    całego dokumentu przekłada się na dobrą wydajność przy intensywnym
+    zapisie.
+    \item \textbf{Bogaty język zapytań} -- agregacje (Aggregation Pipeline)
+    pozwalają na złożone transformacje danych bezpośrednio w bazie,
+    a Atlas Search dodaje pełnotekstowe wyszukiwanie klasy Elasticsearch.
+    \item \textbf{Atlas i ekosystem chmurowy} -- MongoDB Atlas oferuje
+    w pełni zarządzany klaster z automatycznym skalowaniem, backupami
+    i monitoringiem, dostępny na trzech głównych chmurach.
+\end{itemize}
+
+\subsection{Wady i ograniczenia}
+
+\begin{itemize}
+    \item \textbf{Brak JOIN-ów na poziomie silnika} -- relacje między
+    kolekcjami realizuje się przez \texttt{\$lookup} (odpowiednik LEFT JOIN),
+    który jest znacznie wolniejszy od JOIN-ów w silnikach relacyjnych,
+    szczególnie przy złożonych powiązaniach. Model dokumentowy wymaga
+    świadomego projektowania pod kątem wzorców dostępu.
+    \item \textbf{Ograniczone transakcje wielodokumentowe} -- choć dostępne
+    od wersji 4.0, transakcje obejmujące wiele dokumentów i kolekcji
+    mają znacznie wyższy narzut niż w silnikach relacyjnych i są odradzane
+    jako główny wzorzec użycia.
+    \item \textbf{Brak schematu jako wada} -- elastyczność schematu może
+    być pułapką. Brak wymuszanej struktury prowadzi do niespójności danych,
+    jeśli walidacja nie jest implementowana na poziomie aplikacji lub przez
+    JSON Schema Validation.
+    \item \textbf{Wyższe zużycie pamięci} -- BSON przechowuje nazwy pól
+    w każdym dokumencie, co przy kolekcjach z wieloma polami zwiększa
+    rozmiar danych w porównaniu do tabel relacyjnych.
+    \item \textbf{Licencja SSPL} -- zmiana licencji z Apache 2.0 na SSPL
+    w 2018 roku jest kontrowersyjna i dla części organizacji wyklucza
+    użycie MongoDB Community Edition w pewnych scenariuszach.
+    \item \textbf{Słabsze narzędzia analityczne} -- MongoDB nie jest
+    silnikiem OLAP i przy złożonych zapytaniach analitycznych na dużych
+    zbiorach ustępuje specjalizowanym rozwiązaniom jak ClickHouse czy
+    BigQuery.
+\end{itemize}
+
+\subsection{Udogodnienia}
+
+\begin{itemize}
+    \item \textbf{MongoDB Compass} -- oficjalne graficzne narzędzie do
+    przeglądania danych, budowania zapytań i analizy planów wykonania
+    (Explain Plan). Pozwala wizualnie budować pipeline agregacji bez
+    pisania kodu.
+    \item \textbf{mongosh} -- nowoczesna powłoka interaktywna oparta
+    na Node.js zastępująca starszy klient \texttt{mongo}. Obsługuje
+    JavaScript, autouzupełnianie i kolorowanie składni.
+    \item \textbf{Aggregation Pipeline} -- jeden z najbardziej elastycznych
+    mechanizmów transformacji danych w bazach NoSQL. Pozwala łączyć
+    filtrowanie, grupowanie, sortowanie, łączenie kolekcji i obliczenia
+    w jednym zapytaniu wykonywanym po stronie serwera.
+    \item \textbf{Change Streams} -- mechanizm subskrypcji na zmiany
+    w kolekcji lub bazie w czasie rzeczywistym, przydatny do budowy
+    reaktywnych aplikacji i pipeline'ów CDC bez zewnętrznych narzędzi.
+    \item \textbf{JSON Schema Validation} -- możliwość wymuszenia struktury
+    dokumentów na poziomie kolekcji przez zdefiniowanie schematu JSON Schema,
+    co pozwala połączyć elastyczność dokumentową z walidacją danych.
+    \item \textbf{Atlas Search i Vector Search} -- wbudowane wyszukiwanie
+    pełnotekstowe klasy Elasticsearch oraz wyszukiwanie wektorowe dla
+    zastosowań AI/ML, dostępne bez konieczności integracji zewnętrznych
+    systemów.
+\end{itemize}
