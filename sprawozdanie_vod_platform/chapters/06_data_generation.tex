@@ -1,0 +1,104 @@
+Dane testowe zostały wygenerowane przy pomocy autorskiego skryptu napisanego
+w języku Python, zlokalizowanego w module \texttt{src/generators/data\_generator.py}.
+Generator korzysta z biblioteki Faker w wersji obsługującej lokalizacje
+\texttt{pl\_PL} oraz \texttt{en\_US}, co umożliwia tworzenie realistycznych
+danych osobowych z mieszanką polskich i anglojęzycznych imion, nazwisk oraz
+opisów tekstowych. Wszystkie generowane wartości pseudolosowe są
+deterministycznie powtarzalne dzięki ustawieniu wspólnego ziarna (\texttt{seed=42})
+zarówno dla biblioteki Faker, jak i dla wbudowanego generatora liczb
+losowych Pythona, co gwarantuje powtarzalność wyników testów wydajnościowych
+pomiędzy uruchomieniami.
+
+Konfiguracja wolumenu danych została zdefiniowana w module \texttt{src/config.py}
+w postaci trzech profili: \textit{small}, \textit{medium} oraz \textit{large}.
+Profil small obejmuje 5\,000 użytkowników, 2\,000 osób w katalogu twórców,
+2\,000 tytułów oraz 300\,000 sesji oglądania. Profil medium zawiera
+odpowiednio 20\,000 użytkowników, 5\,000 osób, 5\,000 tytułów oraz 500\,000
+sesji oglądania. Profil large powiększa zbiór do 100\,000 użytkowników,
+20\,000 osób, 15\,000 tytułów oraz 6\,000\,000 sesji oglądania. Łączna liczba
+rekordów we wszystkich tabelach docelowo osiąga około pół miliona, miliona
+oraz dziesięciu milionów wierszy odpowiednio dla wolumenów small, medium
+oraz large, co umożliwia obserwację skalowania charakterystyk wydajnościowych
+silników względem rozmiaru zbioru.
+
+W pierwszym etapie generacji danych tworzone są encje
+niezależne -- użytkownicy, osoby z katalogu twórców oraz treści. Następnie
+generowane są encje powiązane jeden-do-wielu z użytkownikiem (profile,
+subskrypcje oraz płatności), encje powiązane z treścią (powiązania
+z osobami, sezony, odcinki) oraz, w ostatnim etapie, rekordy aktywności
+profili (historia oglądania, lista do obejrzenia, oceny). Każda tabela
+zapisywana jest w postaci osobnego pliku CSV z kodowaniem UTF-8, co
+umożliwia jednolity import do wszystkich czterech systemów bazodanowych.
+
+Procedura generowania użytkowników wprowadza realistyczne rozkłady
+prawdopodobieństwa odzwierciedlające typową dystrybucję rynkową. Kraj
+zamieszkania jest losowany z wagą 40\% dla Polski, 15\% dla Stanów
+Zjednoczonych oraz mniejszymi udziałami pozostałych ośmiu krajów
+europejskich. Numer telefonu jest poprzedzany prefiksem zgodnym z krajem
+i jest obecny u około 70\% użytkowników. Status konta jest losowany
+z rozkładu, w którym użytkownicy aktywni stanowią dominującą większość,
+przy czym uwzględniono również kategorie \textit{inactive}, \textit{suspended}
+oraz \textit{deleted}, co pozwala na realistyczne modelowanie zapytań
+filtrujących po stanie konta. Adresy e-mail konstruowane są na podstawie
+imienia, nazwiska oraz identyfikatora użytkownika, z wykorzystaniem zbioru
+typowych domen polskich i międzynarodowych. Wartość pola
+\texttt{password\_hash} jest pseudolosowym ciągiem znaków zgodnym
+z formatem skrótu bcrypt.
+
+Liczba profili przypadających na konto jest losowana z rozkładu, w którym
+najczęstsza wartość mieści się w przedziale od dwóch do trzech profili,
+co odpowiada typowemu wzorcowi użycia rodzinnego. Profil drugi w obrębie
+konta jest oznaczany jako profil dziecięcy z prawdopodobieństwem 40\%,
+co automatycznie ustawia jego klasyfikację wiekową na wartość \textit{ALL}.
+Liczba subskrypcji per użytkownik również jest losowana z odpowiedniego
+rozkładu, przy czym ostatnia subskrypcja zawsze posiada status
+\textit{active}, natomiast wcześniejsze są oznaczane jako \textit{cancelled}
+lub \textit{expired}, co umożliwia testowanie zapytań analizujących historię
+zmian planu. Plan subskrypcji wybierany jest spośród trzech wariantów --
+\textit{Basic}, \textit{Standard} oraz \textit{Premium} -- z wagami 30\%,
+45\% oraz 25\% odpowiednio.
+
+Treści są dzielone na filmy oraz seriale w stosunku 60\% do 40\%. Filmy
+posiadają określoną długość, natomiast seriale otrzymują strukturę
+podrzędną w postaci sezonów oraz odcinków. Liczba sezonów na serial
+podlega rozkładowi malejącemu, w którym dominują seriale jedno-,
+dwu- oraz trzysezonowe. Liczba odcinków w sezonie jest losowana
+z przedziału od czterech do szesnastu, z datami premier rozłożonymi
+w cotygodniowych odstępach. Każdy tytuł otrzymuje od jednej do trzech
+etykiet gatunkowych losowanych z dwunastoelementowego zbioru.
+
+Dla każdego tytułu generowany jest również obiekt JSON wypełniający
+pole \texttt{metadata}. Obiekt zawiera nazwę studia produkcyjnego,
+budżet w przedziale od 500\,000 do 200\,000\,000 jednostek, listę
+otrzymanych nagród (od zera do trzech pozycji), listę znaczników
+kategoryzujących, listę krajów koprodukcji oraz zagnieżdżony obiekt
+\texttt{streaming\_quality} z parametrami technicznymi strumienia.
+Tak skonstruowane pole umożliwia testowanie scenariuszy odpytywania
+danych zagnieżdżonych w sposób reprezentatywny dla rzeczywistych
+zastosowań platform streamingowych.
+
+Powiązania między treściami a osobami są generowane z zachowaniem
+struktury produkcyjnej -- każdy tytuł otrzymuje dokładnie jednego
+reżysera, od jednego do dwóch scenarzystów oraz od trzech do dwunastu
+aktorów, każdy z przypisaną nazwą postaci oraz pozycją w napisach.
+Sesje oglądania są przypisywane losowym profilom oraz losowym treściom,
+przy czym dla seriali wybierany jest losowy odcinek z dostępnych. Postęp
+oglądania jest losowany z rozkładu jednostajnego od zera do stu procent,
+a wartości przekraczające próg 95\% są normalizowane do stu procent
+i oznaczane znacznikiem ukończenia. Oceny wystawiane przez profile
+podlegają rozkładowi pochylonemu w stronę wartości pozytywnych
+(z modą w przedziale od siedmiu do ośmiu punktów), co odzwierciedla
+typową asymetrię ocen obserwowaną na platformach streamingowych.
+Tekst recenzji jest dołączany w 30\% przypadków.
+
+Wygenerowane pliki CSV stanowią wspólny punkt wyjścia dla mechanizmów
+ładowania danych do każdego z czterech systemów bazodanowych. Konwersja
+do modelu dokumentowego MongoDB realizowana jest przez dedykowany skrypt
+importujący, który łączy plik \texttt{users.csv} z plikami \texttt{profiles.csv}
+oraz \texttt{subscriptions.csv} w pojedynczy dokument oraz osadza dane
+gatunków, obsady, sezonów i odcinków wewnątrz dokumentów kolekcji
+\texttt{content}. Konwersja do modelu grafowego Neo4j realizowana jest
+narzędziem \texttt{neo4j-admin import}, które przyjmuje pliki CSV
+opisujące węzły oraz relacje w formacie zgodnym ze specyfikacją silnika.
+Mechanizmy ładowania danych dla poszczególnych silników zostały szczegółowo
+opisane w dalszej części pracy.

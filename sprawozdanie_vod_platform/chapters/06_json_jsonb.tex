@@ -1,0 +1,91 @@
+Każda z czterech analizowanych baz danych obsługuje dane półstrukturalne
+w postaci dokumentów JSON, lecz robi to w sposób różniący się zarówno
+implementacją, jak i konsekwencjami wydajnościowymi. W modelu danych platformy
+streamingowej zostało celowo wykorzystane pole \texttt{metadata} w tabeli
+\texttt{content}, przechowujące dodatkowe atrybuty marketingowe oraz
+techniczne, które nie stanowią naturalnych kandydatów do reprezentacji
+kolumnowej. Pole to obejmuje informacje o studiu produkcyjnym, budżecie,
+otrzymanych nagrodach, znacznikach kategoryzujących, krajach koprodukcji
+oraz parametrach jakościowych strumienia (maksymalna rozdzielczość, wsparcie
+HDR, obsługa Dolby Atmos), które łącznie tworzą strukturę zagnieżdżoną
+o zmiennej liczbie pól.
+
+\textbf{PostgreSQL} udostępnia dwa typy danych dokumentowych: \texttt{json}
+oraz \texttt{jsonb}. Pierwszy z nich zachowuje dokument w postaci tekstowej,
+co skutkuje koniecznością ponownego parsowania przy każdej operacji odczytu,
+natomiast \texttt{jsonb} przechowuje dokument w postaci binarnej, znormalizowanej
+strukturze drzewa, eliminując narzut parsowania oraz umożliwiając efektywne
+indeksowanie. W omawianym modelu pole \texttt{metadata} zostało zadeklarowane
+jako \texttt{jsonb}, co pozwala na wykorzystanie pełnego zestawu operatorów
+ścieżkowych: \texttt{->} (dostęp do pola jako JSON), \texttt{->>} (dostęp
+do pola jako tekst), \texttt{@>} (sprawdzenie zawierania) oraz wyrażeń
+\texttt{jsonpath} wprowadzonych w wersji 12. Najistotniejszą zaletą
+PostgreSQL w kontekście danych półstrukturalnych pozostaje wsparcie dla
+indeksów GIN, umożliwiających efektywne filtrowanie po dowolnych polach
+dokumentu. Indeks GIN założony na całym dokumencie pozwala na realizację
+zapytań typu „znajdź treści posiadające określony znacznik" bez konieczności
+sekwencyjnego skanowania tabeli, natomiast indeks częściowy GIN wykorzystujący
+wyrażenie \texttt{jsonb\_path\_ops} ogranicza rozmiar indeksu w sytuacji,
+gdy wymagany jest wyłącznie operator zawierania.
+
+\textbf{MySQL} obsługuje dane półstrukturalne poprzez natywny typ
+\texttt{JSON}, dostępny od wersji 5.7. Implementacja zachowuje dokument
+w wewnętrznej postaci binarnej zbliżonej do BSON, co eliminuje konieczność
+parsowania tekstowego przy odczycie. Dostęp do pól realizowany jest przez
+operatory \texttt{->} oraz \texttt{->>}, składniowo zgodne z PostgreSQL,
+oraz przez funkcje \texttt{JSON\_EXTRACT}, \texttt{JSON\_VALUE} i
+\texttt{JSON\_TABLE}. Zasadniczym ograniczeniem MySQL pozostaje brak
+możliwości bezpośredniego indeksowania pól dokumentu JSON. Aby umożliwić
+efektywne filtrowanie po wybranym atrybucie, należy zdefiniować kolumnę
+generowaną (\texttt{GENERATED ALWAYS AS}) wyznaczającą wartość konkretnego
+pola JSON, a następnie założyć na niej standardowy indeks B-tree. W modelu
+omawianej platformy przykładem takiego rozwiązania jest indeks na kolumnie
+generowanej wyznaczającej wartość pola \texttt{metadata.studio}, umożliwiający
+szybkie filtrowanie treści według studia produkcyjnego. Rozwiązanie to,
+choć funkcjonalne, jest wyraźnie mniej elastyczne niż mechanizm GIN
+oferowany przez PostgreSQL, wymaga bowiem deklaratywnego określenia
+indeksowanych pól na etapie projektowania schematu.
+
+\textbf{MongoDB} traktuje dokumenty jako podstawowy model danych, co
+eliminuje pojęcie dedykowanego typu JSON -- każda kolekcja przechowuje
+dokumenty BSON o dowolnej strukturze. Pole \texttt{metadata} stanowi
+zagnieżdżony obiekt, indeksowany w sposób analogiczny do pól zwykłych --
+bezpośrednio przez ścieżkę kropkową, na przykład\\
+\texttt{db.content.createIndex(\{"metadata.studio": 1\})}. Indeksy
+wielokluczowe (\textit{multikey indexes}) są zakładane automatycznie dla
+pól o wartości tablicowej, takich jak \texttt{metadata.tags}, co pozwala
+na efektywne filtrowanie treści zawierających konkretny znacznik. Dla
+zapytań po wielu polach jednocześnie dostępne są indeksy złożone, a dla
+wyszukiwania pełnotekstowego w obrębie dokumentu -- indeksy tekstowe
+oraz, w platformie Atlas, mechanizm Atlas Search oparty na bibliotece
+Apache Lucene. W zestawieniu z silnikami relacyjnymi MongoDB oferuje
+najbardziej naturalne i bezpośrednie wsparcie dla danych zagnieżdżonych,
+za cenę utraty części gwarancji modelu relacyjnego, takich jak referencje
+między dokumentami egzekwowane przez silnik.
+
+\textbf{Neo4j} nie operuje typem JSON jako odrębnym typem danych --
+właściwości węzłów oraz relacji są pojedynczymi wartościami skalarnymi
+lub tablicowymi, lecz nie mogą posiadać dowolnej zagnieżdżonej struktury.
+W konsekwencji pola, które w modelach SQL oraz dokumentowym znajdowały się
+wewnątrz dokumentu \texttt{metadata}, w modelu grafowym zostały
+przedstawione w postaci osobnych właściwości węzła \texttt{Content}
+(\texttt{studio}, \texttt{budget}, \texttt{max\_resolution},
+\texttt{hdr\_supported}, \texttt{dolby\_atmos}) lub, w przypadku list,
+w postaci osobnych węzłów połączonych relacjami (na przykład węzły
+\texttt{Award} mogłyby zostać połączone z \texttt{Content} relacją
+\texttt{WON\_AWARD}). Biblioteka APOC udostępnia procedury
+\texttt{apoc.convert.fromJsonMap} oraz \texttt{apoc.load.json}, umożliwiające
+import dokumentów JSON do struktury grafowej, lecz natywny silnik Neo4j
+nie przechowuje dokumentów w postaci dokumentowej.
+
+Z porównania powyższych implementacji wynika, że PostgreSQL oraz MongoDB
+oferują najbogatsze wsparcie dla danych półstrukturalnych, przy czym
+PostgreSQL zachowuje dodatkowo pełen rygor relacyjny i transakcyjny,
+natomiast MongoDB pozwala na operowanie dokumentami w sposób najbardziej
+bezpośredni. MySQL oferuje funkcjonalność porównywalnie ograniczoną do
+podstawowego dostępu i wymaga ręcznej dekompozycji indeksowanych pól,
+natomiast Neo4j wymusza częściowe spłaszczenie struktury w fazie
+projektowania schematu. Wybór reprezentacji pola \texttt{metadata} stanowi
+zatem nie tylko decyzję modelową, lecz również istotny czynnik wpływający
+na charakterystykę wydajnościową poszczególnych silników, co znalazło
+odzwierciedlenie w doborze scenariuszy testowych.

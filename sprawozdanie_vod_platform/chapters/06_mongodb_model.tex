@@ -1,0 +1,71 @@
+Model dokumentowy dla MongoDB stanowi denormalizowane przekształcenie modelu
+relacyjnego, dostosowane do typowych wzorców dostępu w aplikacjach
+streamingowych. Schemat logiczny obejmuje sześć kolekcji głównych --
+\texttt{users}, \texttt{content}, \texttt{watch\_history}, \texttt{ratings},
+\texttt{payments} oraz \texttt{my\_list} -- w których część encji powiązanych
+relacjami jeden-do-wielu została zagnieżdżona w postaci poddokumentów. Schemat
+graficzny przedstawiono na rysunku~\ref{fig:schema_mongo}.
+
+\begin{figure}[H]
+    \centering
+    % \includegraphics[width=1.0\textwidth]{schemas/schema_mongo.png}
+    \caption{Schemat dokumentowy dla MongoDB}
+    \label{fig:schema_mongo}
+\end{figure}
+
+Kolekcja \texttt{users} agreguje w pojedynczym dokumencie informacje o koncie
+użytkownika, tablicę profili (\texttt{profiles[]}) oraz aktualny obiekt
+subskrypcji (\texttt{subscription\{\}}). Decyzja o zagnieżdżeniu profili
+wynika z faktu, że ich liczba w obrębie konta jest ograniczona (najczęściej
+od dwóch do pięciu) oraz że są one praktycznie zawsze pobierane wspólnie
+z danymi użytkownika podczas operacji logowania lub przełączania profilu.
+Subskrypcja przechowywana jest jako pojedynczy zagnieżdżony obiekt
+reprezentujący stan bieżący, podczas gdy historia płatności została
+wydzielona do osobnej kolekcji \texttt{payments} z uwagi na rosnący
+w czasie wolumen rekordów oraz brak konieczności pobierania ich razem
+z danymi użytkownika.
+
+Kolekcja \texttt{content} skupia w pojedynczym dokumencie kompletny opis
+filmu lub serialu wraz z zagnieżdżoną tablicą obsady (\texttt{cast[]}) oraz,
+w przypadku seriali, dwupoziomową hierarchią sezonów i odcinków
+(\texttt{seasons[]} zawierającą \texttt{episodes[]}). Tablica obsady
+przechowuje denormalizowaną kopię podstawowych danych każdej osoby --
+imię, nazwisko, rolę oraz, dla aktorów, nazwę postaci i pozycję w napisach --
+co eliminuje konieczność wykonywania operacji \texttt{\$lookup} przy
+typowym scenariuszu pobrania szczegółów tytułu. Gatunki przechowywane są
+jako tablica wartości tekstowych (\texttt{genres[]}), co umożliwia
+wykorzystanie indeksu wielowartościowego (\textit{multikey index}) do
+efektywnego wyszukiwania treści po wybranej kategorii. Pole \texttt{metadata},
+typu \texttt{object}, agreguje dodatkowe atrybuty marketingowe i techniczne,
+omówione szczegółowo w kolejnym podrozdziale.
+
+Kolekcje rejestrujące aktywność użytkownika -- \texttt{watch\_history},
+\texttt{ratings} oraz \texttt{my\_list} -- zostały utrzymane jako odrębne
+struktury, mimo że w modelu hierarchicznym stanowiłyby naturalne kandydatury
+do zagnieżdżenia w obrębie dokumentu profilu. Decyzja o ich wydzieleniu
+wynika z dwóch przesłanek: rosnącego w czasie wolumenu rekordów, który
+w przypadku zagnieżdżenia mógłby przekroczyć limit szesnastu megabajtów
+przypadający na pojedynczy dokument BSON, oraz konieczności efektywnego
+wyszukiwania po identyfikatorze treści, na przykład w celu wyznaczenia
+średniej oceny lub liczby unikalnych widzów dla danego tytułu. Powiązania
+z dokumentami nadrzędnymi realizowane są przez referencje
+(\texttt{profile\_id}, \texttt{content\_id}), z indeksami złożonymi
+zaprojektowanymi pod konkretne wzorce zapytań -- typowo
+\texttt{(profile\_id, started\_at)} dla historii oglądania oraz
+\texttt{(content\_id, score)} dla ocen.
+
+Kolekcja \texttt{payments} została wydzielona z dokumentu użytkownika,
+ponieważ liczba transakcji per subskrypcja może być znacząca, a dane te
+są przetwarzane głównie w zapytaniach analitycznych (raporty przychodów,
+analiza skuteczności metod płatności), niezwiązanych bezpośrednio
+z operacjami na koncie użytkownika. Powiązanie z subskrypcją realizowane
+jest przez referencję \texttt{subscription\_id}, mapującą się na identyfikator
+zagnieżdżony w dokumencie \texttt{users}.
+
+Pole \texttt{\_id} stanowi domyślny identyfikator każdego dokumentu, na
+którym automatycznie zakładany jest unikalny indeks. Dla zachowania
+kompatybilności semantycznej z modelem relacyjnym zachowano typ
+\texttt{bigserial} (mapowany na 64-bitową liczbę całkowitą), zamiast
+domyślnego typu \texttt{ObjectId}, co ułatwia generowanie identyfikatorów
+zewnętrznym skryptem oraz zapewnia bezpośrednią porównywalność z modelami
+SQL podczas testów wydajnościowych.
