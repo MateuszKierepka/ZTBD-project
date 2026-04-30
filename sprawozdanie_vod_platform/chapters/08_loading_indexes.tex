@@ -1,0 +1,355 @@
+\subsection{Metody ładowania danych}
+
+Wspólnym punktem wyjścia dla wszystkich czterech silników są pliki CSV
+wyprodukowane przez generator (\texttt{src/generators/data\_generator.py})
+i zapisane w katalogu \texttt{app/data/\{small,medium,large\}/} -- po
+jednym pliku na tabelę modelu relacyjnego. Każdy z czterech loaderów
+(\texttt{postgres\_loader.py}, \texttt{mysql\_loader.py}, \texttt{mongo\_loader.py},
+\texttt{neo4j\_loader.py}) czyta te same pliki niezależnie i przekształca je
+do natywnej reprezentacji docelowego silnika. Dzięki temu cztery bazy
+otrzymują identyczne dane wejściowe -- różni je wyłącznie sposób, w jaki
+te dane zostają wsadowo wprowadzone do silnika.
+
+W każdym z loaderów obowiązuje ta sama, świadomie przyjęta strategia
+dwuetapowa: najpierw ładowane są wszystkie wiersze do pustych tabel
+i kolekcji \emph{bez indeksów wtórnych}, a dopiero w drugim kroku -- po
+zakończeniu importu -- wywoływana jest osobna metoda \texttt{create\_indexes()}
+budująca indeksy na komplecie danych. Klucze główne i ograniczenia
+unikalności zdefiniowane w schemacie pozostają aktywne przez cały czas;
+dotyczy to wyłącznie indeksów wtórnych przyspieszających scenariusze SELECT.
+Takie podejście jest standardową praktyką ładowania masowego: koszt
+przebudowy struktur indeksowych po zakończeniu importu jest istotnie
+niższy niż koszt utrzymywania ich w spójności po każdym pojedynczym
+wstawieniu. Dodatkowo metoda ta jest wymagana przez strukturę pipeline'u
+benchmarków -- pomiary scenariuszy CRUD są wykonywane dwukrotnie:
+najpierw na bazie bez indeksów wtórnych, a następnie po ich założeniu,
+co pozwala bezpośrednio porównać wpływ indeksów na czas wykonania
+zapytań.
+
+\subsubsection*{PostgreSQL -- COPY FROM STDIN}
+
+PostgreSQL ładowany jest mechanizmem \texttt{COPY FROM STDIN} -- najszybszą
+natywną metodą importu masowego dostępną w tym silniku. W odróżnieniu
+od ciągu \texttt{INSERT}-ów, \texttt{COPY} pomija znaczną część narzutu
+parsera i protokołu komunikacyjnego, omija logikę triggerów per-statement
+oraz pozwala silnikowi grupować zapis stron WAL. Loader korzysta
+z driveira \texttt{psycopg~3} i jego strumieniowego API \texttt{cursor.copy()}
+karmionego kolejnymi 8-megabajtowymi blokami pliku CSV. Przed właściwym
+ładowaniem podnoszone są dwa parametry sesji:
+
+\begin{lstlisting}[language=SQL,basicstyle=\ttfamily\small]
+SET maintenance_work_mem = '512MB';
+SET work_mem = '64MB';
+\end{lstlisting}
+
+\noindent \texttt{maintenance\_work\_mem} przyspiesza późniejsze tworzenie
+indeksów (krok \texttt{CREATE INDEX} może wówczas posortować dane w pamięci
+zamiast korzystać z plików tymczasowych), \texttt{work\_mem} zwiększa
+budżet pamięciowy operacji sortujących i hash-ujących wykorzystywanych
+przez \texttt{COPY} przy walidacji kluczy obcych. Tabele są ładowane
+w deterministycznej kolejności respektującej zależności kluczy obcych
+(\texttt{users}~$\rightarrow$~\texttt{profiles}~$\rightarrow$~\texttt{subscriptions}~$\rightarrow$~\texttt{payments}~$\rightarrow$~\dots),
+a po zakończeniu importu sekwencje (\texttt{users\_user\_id\_seq} i analogiczne)
+są resetowane funkcją \texttt{setval()} do wartości \texttt{MAX(pk)+1} -- co
+zabezpiecza późniejsze scenariusze \texttt{INSERT} przed konfliktami kluczy
+głównych.
+
+\subsubsection*{MySQL -- LOAD DATA LOCAL INFILE}
+
+MySQL wykorzystuje swój odpowiednik \texttt{COPY} -- instrukcję
+\texttt{LOAD DATA LOCAL INFILE}, która wczytuje plik CSV bezpośrednio
+po stronie serwera, omijając całkowicie warstwę przygotowywanych
+zapytań. Aby mechanizm ten zadziałał z poziomu klienta, w pliku
+\texttt{docker-compose.yml} ustawiona jest opcja serwera
+\texttt{local-infile=1}, a w driverze PyMySQL flaga
+\texttt{local\_infile=True} przekazywana do \texttt{connect()}.
+Bezpośrednio przed importem loader wyłącza trzy mechanizmy
+narzutowe:
+
+\begin{lstlisting}[language=SQL,basicstyle=\ttfamily\small]
+SET FOREIGN_KEY_CHECKS = 0;
+SET UNIQUE_CHECKS = 0;
+SET AUTOCOMMIT = 0;
+\end{lstlisting}
+
+\noindent Wyłączenie \texttt{FOREIGN\_KEY\_CHECKS} pozwala załadować
+tabele potomne, zanim wszystkie wiersze tabeli rodzica zostaną
+przeniesione na dysk; \texttt{UNIQUE\_CHECKS} zatrzymuje tymczasową
+walidację unikalności (klucze i tak są spójne, ponieważ generator
+gwarantuje brak duplikatów); wyłączenie \texttt{AUTOCOMMIT} grupuje
+zapisy w jedną transakcję, redukując liczbę synchronizacji pliku
+\texttt{redo log}. Po zakończeniu importu wszystkie trzy flagi są
+przywracane, a transakcja zatwierdzona pojedynczym \texttt{COMMIT}.
+Dla tabel, w których oryginalny CSV reprezentuje wartości logiczne
+jako napisy \texttt{true}/\texttt{false} (\texttt{profiles},
+\texttt{subscriptions}, \texttt{content}, \texttt{watch\_history}),
+loader generuje wzbogaconą postać \texttt{LOAD DATA} ze zmiennymi
+sesyjnymi i klauzulą \texttt{SET}, wykonującymi konwersję
+napis~$\rightarrow$~\texttt{TINYINT} po stronie serwera.
+
+\subsubsection*{MongoDB -- insert\_many w trybie nieuporządkowanym}
+
+MongoDB nie posiada równoważnika \texttt{COPY} -- ładowanie odbywa się
+metodą \texttt{insert\_many()} drivera PyMongo, której PyMongo automatycznie
+serializuje wsady do protokołu \texttt{OP\_MSG}. Kluczowe są dwie decyzje
+projektowe. Po pierwsze, dokumenty są wkładane wsadami po
+\textbf{25\,000 pozycji} (\texttt{BATCH\_SIZE = 25000}); jest to wartość
+będąca kompromisem -- mniejsze paczki podnoszą udział narzutu sieciowego,
+większe ryzykują przekroczenie domyślnego limitu wiadomości BSON
+(48~MB) dla tabeli \texttt{content}, w której każdy dokument zawiera
+zagnieżdżoną listę sezonów, odcinków i obsady. Po drugie, każde
+wywołanie \texttt{insert\_many()} korzysta z flagi \texttt{ordered=False}.
+W trybie nieuporządkowanym MongoDB wykonuje wstawiania równolegle
+i nie przerywa wsadu po pierwszym błędzie -- co istotnie zwiększa
+przepustowość i odporność na pojedyncze duplikaty.
+
+Specyfika modelu dokumentowego wymaga, by przed właściwym \texttt{insert\_many}
+loader scalił dane z wielu plików CSV w jeden dokument. Kolekcja
+\texttt{users} powstaje z połączenia \texttt{users.csv}, \texttt{profiles.csv}
+oraz aktywnych rekordów z \texttt{subscriptions.csv} osadzonych
+bezpośrednio w polu \texttt{subscription}. Kolekcja \texttt{content}
+absorbuje dane z \texttt{content.csv}, \texttt{content\_people.csv},
+\texttt{seasons.csv} oraz \texttt{episodes.csv} budując w pamięci
+hierarchię \texttt{content}~$\rightarrow$~\texttt{seasons[]}~$\rightarrow$~\texttt{episodes[]}.
+Wsadowy import po stronie sterownika zaczyna się dopiero po skompletowaniu
+całej struktury w słowniku Pythona, co dla wolumenu \emph{large} oznacza
+przejściowy szczyt zużycia RAM warstwy orkiestracji rzędu kilkuset MB --
+celowo akceptowalny, ponieważ alternatywa (wielokrotne aktualizacje
+\texttt{\$push} po stronie bazy) byłaby o rzędy wielkości wolniejsza.
+
+\subsubsection*{Neo4j -- UNWIND w sesjach Bolt}
+
+Neo4j jest najtrudniejszym przypadkiem, ponieważ ładowanie dotyczy
+nie tylko węzłów, ale również relacji. Loader korzysta z konstrukcji
+Cypher \texttt{UNWIND \$rows AS r CREATE \dots} przyjmującej
+parametr \texttt{rows} jako tablicę słowników -- zamiast wysyłać
+N pojedynczych zapytań \texttt{CREATE}, wykonujemy jedno zapytanie
+przetwarzające cały wsad. Również tutaj wsad ma rozmiar
+\textbf{25\,000} elementów; powyżej tej wielkości pojawia się ryzyko
+przekroczenia budżetu transakcji (\texttt{dbms.memory.transaction.total.max
+~=~3g}) dla rzędu wielkości scenariusza \emph{large}.
+
+Ładowanie dzieli się na dwa wyraźne etapy. W pierwszym tworzone
+są \emph{ograniczenia unikalności} (\texttt{CREATE CONSTRAINT \dots
+REQUIRE x IS UNIQUE}) na identyfikatorach kluczowych etykiet --
+\texttt{User}, \texttt{Profile}, \texttt{Content}, \texttt{Season},
+\texttt{Episode}, \texttt{Person}, \texttt{Genre},
+\texttt{Subscription} i \texttt{Payment}. W Neo4j ograniczenie
+unikalności jest jednocześnie \emph{indeksem zakresowym} -- stworzenie
+go przed importem jest absolutnie kluczowe, ponieważ druga faza
+(tworzenie relacji) wykonuje miliony operacji
+\texttt{MATCH~(n~\{id:~r.id\})}, które bez indeksu degenerowałyby
+się do skanu wszystkich węzłów danej etykiety. W drugim etapie
+ładowane są węzły wszystkich etykiet, a następnie -- w równie
+deterministycznej kolejności -- relacje (\texttt{HAS\_PROFILE},
+\texttt{HAS\_SUBSCRIPTION}, \texttt{HAS\_PAYMENT}, \texttt{HAS\_GENRE},
+\texttt{HAS\_SEASON}, \texttt{HAS\_EPISODE}, \texttt{ACTED\_IN},
+\texttt{DIRECTED}, \texttt{WROTE}, \texttt{WATCHED},
+\texttt{ADDED\_TO\_LIST}, \texttt{RATED}). Plik \texttt{watch\_history.csv}
+dla wolumenu \emph{large} liczy miliony wierszy -- aby uniknąć
+materializacji całej listy w pamięci, dla relacji \texttt{WATCHED},
+\texttt{ADDED\_TO\_LIST} oraz \texttt{RATED} loader korzysta
+z generatorów Pythona i metody \texttt{\_batch\_write\_streaming()},
+która buforuje paczkę w pamięci tylko do osiągnięcia \texttt{BATCH\_SIZE},
+po czym natychmiast oddaje ją do bazy.
+
+\subsubsection*{Czyszczenie środowiska przed kolejnym ładowaniem}
+
+W pipeline benchmarków każda baza może być ładowana wielokrotnie --
+różnymi wolumenami danych oraz w wariancie z indeksami i bez. Aby
+uniknąć pozostałości po poprzednich uruchomieniach, każdy loader
+zaczyna od czyszczenia. PostgreSQL i MySQL korzystają z \texttt{TRUNCATE}
+(odpowiednio z opcją \texttt{CASCADE} oraz po wyłączeniu kontroli
+kluczy obcych), MongoDB wykonuje \texttt{drop\_collection()}
+na wszystkich kolekcjach docelowych, a Neo4j wykonuje pętlę
+\texttt{MATCH~()-[r]->() WITH r LIMIT 50000 DELETE r} oraz
+\texttt{MATCH~(n) WITH n LIMIT 50000 DELETE n}, dopóki licznik
+usuniętych elementów nie spadnie do zera. Wsadowe usuwanie zamiast
+pojedynczego \texttt{MATCH (n) DETACH DELETE n} jest podyktowane
+limitem pamięci transakcyjnej silnika -- jedna transakcja usuwająca
+kilkanaście milionów relacji wyczerpałaby budżet 3~GB.
+
+% -------------------------------------------------------
+\subsection{Typy indeksów i strategia indeksowania}
+
+Drugim etapem każdego ładowania -- wykonywanym przez metodę
+\texttt{create\_indexes()} dopiero po zakończeniu importu -- jest
+budowa zestawu indeksów wtórnych. Dobór indeksów został podporządkowany
+24~scenariuszom benchmarków: każdy istotny predykat \texttt{WHERE},
+warunek \texttt{JOIN} oraz klauzula \texttt{ORDER BY} z gorącej ścieżki
+SELECT-ów ma wsparcie w postaci dedykowanego indeksu, co pozwala
+hipotezie pracy wybrzmieć w pomiarach. Jednocześnie zakres
+indeksów jest świadomie ograniczony do struktur o praktycznym
+zastosowaniu -- nie definiujemy indeksów martwych, których jedyną
+funkcją byłoby spowolnienie operacji zapisu.
+
+Wszystkie cztery silniki dzielą zestaw indeksów ,,bazowych'' --
+B-drzewa pojedynczych kolumn będących kluczami obcymi lub
+najczęstszymi predykatami filtrowania (\texttt{users.status},
+\texttt{content.type}, \texttt{watch\_history.content\_id} i~analogiczne).
+Powyżej tego wspólnego mianownika każdy z silników eksponuje
+typy indeksów charakterystyczne dla swojej architektury -- i to
+właśnie te ,,specjalistyczne'' struktury przesądzają o sile
+poszczególnych baz w wybranych scenariuszach.
+
+\subsubsection*{PostgreSQL}
+
+Loader \texttt{postgres\_loader.py} tworzy 17 indeksów wtórnych,
+spośród których pięć wykracza poza standardowe B-drzewo:
+
+\begin{itemize}
+    \item \textbf{Indeksy złożone (composite B-tree)} --
+    \texttt{idx\_subscriptions\_status\_plan} po
+    \texttt{(status, plan\_name)} oraz
+    \texttt{idx\_wh\_profile\_started} po
+    \texttt{(profile\_id, started\_at DESC)}. Drugi obsługuje
+    najczęstsze zapytanie domeny aktywności -- ,,ostatnie sesje
+    profilu'' -- pozwalając jednym przejściem indeksu odczytać
+    posortowany wynik bez kroku \texttt{Sort}.
+    \item \textbf{Indeks częściowy (partial index)} --
+    \texttt{idx\_content\_active\_popular} założony
+    na \texttt{(popularity\_score DESC)} z klauzulą
+    \texttt{WHERE is\_active = TRUE}. Indeks fizycznie
+    przechowuje tylko aktywne tytuły, co dla katalogu z
+    nieaktywnymi pozycjami daje istotnie mniejszą strukturę
+    i szybszy dostęp w scenariuszach typu ,,top~N popularnych
+    treści''.
+    \item \textbf{GIN z trygramami} --
+    \texttt{idx\_content\_title\_trgm} na kolumnie
+    \texttt{title} z operatorem \texttt{gin\_trgm\_ops}
+    z rozszerzenia \texttt{pg\_trgm} (loader włącza je
+    instrukcją \texttt{CREATE EXTENSION IF NOT EXISTS pg\_trgm}).
+    Indeks ten przyspiesza zapytania z operatorem
+    \texttt{LIKE '\%fragment\%'} -- bez niego predykat z wiodącym
+    znakiem wieloznacznym wymusiłby \texttt{Seq Scan}.
+    \item \textbf{GIN dla JSONB} --
+    \texttt{idx\_content\_metadata\_gin} na kolumnie
+    \texttt{metadata} typu \texttt{jsonb}. Daje dostęp
+    indeksowy do operatorów ,,zawiera'' \texttt{@>}
+    i ,,istnieje klucz'' \texttt{?} -- kluczowe dla scenariuszy
+    odpytujących pola zagnieżdżone (np. nazwę studia
+    produkcyjnego z \texttt{metadata->>'studio'}).
+\end{itemize}
+
+\subsubsection*{MySQL}
+
+Loader \texttt{mysql\_loader.py} tworzy 10 indeksów wtórnych
+o nieco węższym profilu, wynikającym z ograniczeń
+silnika InnoDB:
+
+\begin{itemize}
+    \item \textbf{Indeks złożony} --
+    \texttt{idx\_wh\_profile\_started} po
+    \texttt{(profile\_id, started\_at DESC)} -- analogicznie
+    do PostgreSQL.
+    \item \textbf{FULLTEXT} -- \texttt{idx\_content\_title\_ft}
+    na kolumnie \texttt{title}. MySQL nie udostępnia
+    odpowiednika trygramowego GIN, dlatego dla scenariuszy
+    z wyszukiwaniem po fragmencie tytułu wykorzystywany jest
+    natywny mechanizm pełnotekstowy z operatorem
+    \texttt{MATCH \dots AGAINST}.
+    \item \textbf{Indeks funkcyjny po polu JSON} --
+    \texttt{idx\_content\_metadata\_studio} założony na
+    wyrażeniu \texttt{(CAST(metadata->>'\$.studio' AS CHAR(100)))}.
+    InnoDB nie indeksuje całych dokumentów JSON tak jak
+    PostgreSQL przez GIN -- zamiast tego pozwala zaindeksować
+    pojedyncze, jawnie wyciągnięte pole. Wybór został
+    podyktowany scenariuszami benchmarka, które filtrują po
+    nazwie studia.
+\end{itemize}
+
+\subsubsection*{MongoDB}
+
+W modelu dokumentowym indeksy są zakładane na poziomie
+kolekcji metodą \texttt{create\_index()} sterownika PyMongo.
+Loader buduje ich 13:
+
+\begin{itemize}
+    \item \textbf{Indeksy pojedynczych pól} po
+    \texttt{users.email} (\texttt{unique=True}),
+    \texttt{users.status}, \texttt{content.type},
+    \texttt{content.is\_active} i analogicznych.
+    \item \textbf{Indeks wielokluczowy (multikey)} po polu
+    \texttt{content.genres} -- pole jest tablicą napisów,
+    więc MongoDB automatycznie tworzy indeks wielokluczowy
+    pozwalający efektywnie odpytywać po wartości jednego
+    z elementów (\texttt{\{ genres: "drama" \}}).
+    \item \textbf{Indeks zagnieżdżony} po
+    \texttt{users.profiles.profile\_id} -- ,,profil''
+    jest osadzony w dokumencie użytkownika, a indeks
+    pozwala szybko odnaleźć dokument-rodzic po identyfikatorze
+    osadzonego elementu.
+    \item \textbf{Indeks złożony} po
+    \texttt{watch\_history (profile\_id ASC, started\_at DESC)}
+    -- kolejność identyczna jak w PostgreSQL i MySQL.
+    \item \textbf{Indeks tekstowy} typu \texttt{text} na
+    polu \texttt{content.title} -- obsługuje natywny operator
+    \texttt{\$text} dla zapytań wyszukiwania pełnotekstowego.
+    \item \textbf{Indeksy z ograniczeniem unikalności} po
+    \texttt{(profile\_id, content\_id)} dla kolekcji
+    \texttt{ratings} oraz \texttt{my\_list} -- jednocześnie
+    zabezpieczają model przed duplikatami i przyspieszają
+    najczęstszą formę dostępu do tych kolekcji.
+\end{itemize}
+
+\subsubsection*{Neo4j}
+
+Neo4j od najwyższego poziomu rozróżnia kilka typów indeksów,
+a dodatkowo każde ograniczenie unikalności automatycznie tworzy
+indeks zakresowy. Loader \texttt{neo4j\_loader.py} korzysta
+z trzech kategorii:
+
+\begin{itemize}
+    \item \textbf{Indeksy zakresowe (range index)} -- domyślny
+    typ tworzony przez \texttt{CREATE INDEX FOR (n:Label)
+    ON (n.property)}. Pokrywa pola \texttt{User.status},
+    \texttt{User.country\_code}, \texttt{Content.type},
+    \texttt{Content.popularity\_score}, \texttt{Content.is\_active},
+    \texttt{Subscription.status} i \texttt{Payment.status}.
+    Dodatkowo, \emph{niejawnie}, indeksy zakresowe powstają
+    dla wszystkich identyfikatorów objętych ograniczeniami
+    unikalności tworzonymi w pierwszej fazie ładowania
+    (\texttt{User.user\_id}, \texttt{Content.content\_id}
+    i osiem analogicznych).
+    \item \textbf{Indeksy tekstowe (text index)} -- pokrywają
+    pola \texttt{Content.title} oraz \texttt{Content.metadata}.
+    Indeks tekstowy w Neo4j jest zoptymalizowany pod operatory
+    \texttt{STARTS WITH}, \texttt{ENDS WITH} i \texttt{CONTAINS}
+    -- czyli te same przypadki, w których PostgreSQL korzysta
+    z trygramowego GIN.
+    \item \textbf{Indeks pełnotekstowy (fulltext index)}
+    \texttt{content\_title\_ft} -- używany w scenariuszach
+    odpytywanych przez procedurę \texttt{db.index.fulltext.queryNodes()}.
+    Indeks pełnotekstowy oparty jest na bibliotece Lucene
+    i obsługuje analizator językowy oraz scoring -- czego nie
+    daje samodzielny indeks tekstowy.
+\end{itemize}
+
+\subsubsection*{Strategia tworzenia i kasowania indeksów w pipeline'ie}
+
+Cały pipeline benchmarków został zaprojektowany tak, aby tę samą
+bazę odpytać w dwóch wariantach -- bez i z indeksami wtórnymi --
+przy minimalnym narzucie organizacyjnym. Każdy loader udostępnia
+parę symetrycznych metod: \texttt{create\_indexes()} oraz
+\texttt{drop\_indexes()}. Pierwsza wykonuje listę instrukcji
+\texttt{CREATE INDEX IF NOT EXISTS}, druga -- listę
+\texttt{DROP INDEX IF EXISTS} dla każdego indeksu z osobna
+po nazwie. W przypadku Neo4j, w którym lista indeksów
+nieskojarzonych z ograniczeniami zmienia się w czasie życia
+bazy, \texttt{drop\_indexes()} odpytuje katalog systemowy
+zapytaniem \texttt{SHOW INDEXES YIELD name, owningConstraint
+WHERE owningConstraint IS NULL} i kasuje zwrócone pozycje --
+co gwarantuje, że indeksy podtrzymujące unikalność identyfikatorów
+nie zostaną usunięte.
+
+Komenda \texttt{run-all} pliku \texttt{main.py} sekwencyjnie
+wywołuje cały cykl: \emph{generate}~$\rightarrow$~\emph{load}
+(bez indeksów wtórnych)~$\rightarrow$~\emph{benchmark}~$\rightarrow$
+\emph{explain}~$\rightarrow$~\emph{create-indexes}~$\rightarrow$~\emph{benchmark}
+(z indeksami)~$\rightarrow$~\emph{explain}~$\rightarrow$~\emph{visualize}.
+Tym samym wynik każdego scenariusza dostępny jest w dwóch wariantach
+opisanych jednoznaczną kolumną \texttt{indexed} w pliku CSV
+z wynikami, a późniejsza analiza (mapy cieplne, weryfikacja
+hipotezy w sekcji 11) sprowadza się do wyliczenia stosunku
+czasów \texttt{indexed} / \texttt{not\_indexed} dla każdego
+scenariusza i każdej bazy.
