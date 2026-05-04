@@ -106,13 +106,13 @@ od fazy z indeksami:
     \item \texttt{generate} -- wygenerowanie plików CSV
     z deterministycznym ziarnem 42.
     \item \texttt{load --no-indexes} -- załadowanie wszystkich czterech
-    baz, bez tworzenia indeksów wtórnych.
+    baz, bez tworzenia indeksów dodatkowych.
     \item \texttt{benchmark} -- 24~scenariusze $\times$ 4~bazy
     $\times$ 3~próby na bazie bez indeksów.
     \item \texttt{explain} -- analiza planów wykonania scenariuszy
     SELECT (rozdział 10) dla wariantu bez indeksów.
     \item \texttt{load} -- ponowne załadowanie tych samych danych,
-    tym razem ze stworzeniem indeksów wtórnych.
+    tym razem ze stworzeniem indeksów dodatkowych.
     \item \texttt{benchmark --with-indexes} -- powtórzenie tych
     samych 24~scenariuszy w wariancie z indeksami.
     \item \texttt{explain --with-indexes} -- analiza planów

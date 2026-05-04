@@ -12,17 +12,17 @@ te dane zostają wsadowo wprowadzone do silnika.
 
 W każdym z loaderów obowiązuje ta sama, świadomie przyjęta strategia
 dwuetapowa: najpierw ładowane są wszystkie wiersze do pustych tabel
-i kolekcji \emph{bez indeksów wtórnych}, a dopiero w drugim kroku -- po
+i kolekcji \emph{bez indeksów dodatkowych}, a dopiero w drugim kroku -- po
 zakończeniu importu -- wywoływana jest osobna metoda \texttt{create\_indexes()}
 budująca indeksy na komplecie danych. Klucze główne i ograniczenia
 unikalności zdefiniowane w schemacie pozostają aktywne przez cały czas;
-dotyczy to wyłącznie indeksów wtórnych przyspieszających scenariusze SELECT.
+dotyczy to wyłącznie indeksów dodatkowych przyspieszających scenariusze SELECT.
 Takie podejście jest standardową praktyką ładowania masowego: koszt
 przebudowy struktur indeksowych po zakończeniu importu jest istotnie
 niższy niż koszt utrzymywania ich w spójności po każdym pojedynczym
 wstawieniu. Dodatkowo metoda ta jest wymagana przez strukturę pipeline'u
 benchmarków -- pomiary scenariuszy CRUD są wykonywane dwukrotnie:
-najpierw na bazie bez indeksów wtórnych, a następnie po ich założeniu,
+najpierw na bazie bez indeksów dodatkowych, a następnie po ich założeniu,
 co pozwala bezpośrednio porównać wpływ indeksów na czas wykonania
 zapytań.
 
@@ -174,7 +174,7 @@ kilkanaście milionów relacji wyczerpałaby budżet 3~GB.
 
 Drugim etapem każdego ładowania -- wykonywanym przez metodę
 \texttt{create\_indexes()} dopiero po zakończeniu importu -- jest
-budowa zestawu indeksów wtórnych. Dobór indeksów został podporządkowany
+budowa zestawu indeksów dodatkowych. Dobór indeksów został podporządkowany
 24~scenariuszom benchmarków: każdy istotny predykat \texttt{WHERE},
 warunek \texttt{JOIN} oraz klauzula \texttt{ORDER BY} z gorącej ścieżki
 SELECT-ów ma wsparcie w postaci dedykowanego indeksu, co pozwala
@@ -194,7 +194,7 @@ poszczególnych baz w wybranych scenariuszach.
 
 \subsubsection*{PostgreSQL}
 
-Loader \texttt{postgres\_loader.py} tworzy 17 indeksów wtórnych,
+Loader \texttt{postgres\_loader.py} tworzy 17 indeksów dodatkowych,
 spośród których pięć wykracza poza standardowe B-drzewo:
 
 \begin{itemize}
@@ -233,7 +233,7 @@ spośród których pięć wykracza poza standardowe B-drzewo:
 
 \subsubsection*{MySQL}
 
-Loader \texttt{mysql\_loader.py} tworzy 10 indeksów wtórnych
+Loader \texttt{mysql\_loader.py} tworzy 10 indeksów dodatkowych
 o nieco węższym profilu, wynikającym z ograniczeń
 silnika InnoDB:
 
@@ -328,7 +328,7 @@ z trzech kategorii:
 \subsubsection*{Strategia tworzenia i kasowania indeksów w pipeline'ie}
 
 Cały pipeline benchmarków został zaprojektowany tak, aby tę samą
-bazę odpytać w dwóch wariantach -- bez i z indeksami wtórnymi --
+bazę odpytać w dwóch wariantach -- bez i z indeksami dodatkowymi --
 przy minimalnym narzucie organizacyjnym. Każdy loader udostępnia
 parę symetrycznych metod: \texttt{create\_indexes()} oraz
 \texttt{drop\_indexes()}. Pierwsza wykonuje listę instrukcji
@@ -344,7 +344,7 @@ nie zostaną usunięte.
 
 Komenda \texttt{run-all} pliku \texttt{main.py} sekwencyjnie
 wywołuje cały cykl: \emph{generate}~$\rightarrow$~\emph{load}
-(bez indeksów wtórnych)~$\rightarrow$~\emph{benchmark}~$\rightarrow$
+(bez indeksów dodatkowych)~$\rightarrow$~\emph{benchmark}~$\rightarrow$
 \emph{explain}~$\rightarrow$~\emph{create-indexes}~$\rightarrow$~\emph{benchmark}
 (z indeksami)~$\rightarrow$~\emph{explain}~$\rightarrow$~\emph{visualize}.
 Tym samym wynik każdego scenariusza dostępny jest w dwóch wariantach

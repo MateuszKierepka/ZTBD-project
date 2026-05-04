@@ -1,99 +1,580 @@
-\subsection{Wyniki bez indeksów}
+\subsection{Metodologia analizy planów wykonania}
+
+Niniejszy rozdział uzupełnia ilościowe wyniki benchmarków rozdziału 12
+o wymiar jakościowy: analizujemy, w jaki sposób każdy z silników
+\emph{wykonuje} zapytania SELECT i jak ta strategia zmienia się po
+założeniu indeksów dodatkowych. Sam pomiar czasu mówi nam, która baza
+zwróciła wynik szybciej, ale nie tłumaczy, czemu tak się stało --
+a bez tego trudno powiedzieć cokolwiek sensownego o tym, dlaczego
+jedna baza wygrywa, a druga przegrywa w danym scenariuszu.
+
+Analiza opiera się na sześciu scenariuszach SELECT zdefiniowanych
+w module \texttt{src/benchmarks/explain\_analyzer.py}, dobranych tak,
+żeby pokryć typowe wzorce dostępu do bazy w aplikacji typu VOD:
+
+\begin{itemize}
+    \item \textbf{S1} -- ,,Homepage'': filtr i sortowanie po popularności
+    aktywnych treści w jednym gatunku.
+    \item \textbf{S2} -- Rekomendacje typu \emph{collaborative filtering}:
+    podwójna agregacja na historii oglądania z dodatkowym warunkiem
+    odrzucającym treści już obejrzane przez profil
+    (\texttt{NOT IN}/\texttt{NOT EXISTS}).
+    \item \textbf{S3} -- TOP 100 najczęściej oglądanych treści z ostatnich
+    miesięcy: zakresowe skanowanie historii z agregacją i sortowaniem.
+    \item \textbf{S4} -- Wyszukiwanie pełnotekstowe po fragmencie tytułu.
+    \item \textbf{S5} -- Historia oglądania pojedynczego profilu z
+    dołączeniem tytułów: punktowy filtr + sortowanie + złączenie.
+    \item \textbf{S6} -- Filmografia osoby (aktor/reżyser/scenarzysta):
+    przejście przez tabelę łączącą do \texttt{content}.
+\end{itemize}
+
+Plan wykonania pozyskiwany jest natywnym mechanizmem każdego silnika.
+Dla PostgreSQL wykorzystywany jest wariant
+\texttt{EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)} -- który \emph{faktycznie
+wykonuje} zapytanie i raportuje rzeczywiste czasy wykonania
+(\texttt{Execution Time}), pełny koszt planu oraz typ każdego skanu
+(\texttt{Seq Scan}, \texttt{Index Scan}, \texttt{Bitmap Heap Scan},
+\texttt{Bitmap Index Scan}). Dla MySQL używany jest
+\texttt{EXPLAIN FORMAT=JSON}, który -- inaczej niż w PostgreSQL --
+\emph{nie wykonuje} zapytania, lecz zwraca wyłącznie szacunki optymalizatora:
+typ dostępu (\texttt{access\_type}), wykorzystany klucz (\texttt{key})
+oraz przewidywaną liczbę przejrzanych wierszy
+(\texttt{rows\_examined\_per\_scan}). Z tego powodu w analizie MySQL
+nie dysponujemy zmierzoną wartością czasu wykonania na poziomie
+EXPLAIN -- czas faktyczny pochodzi wyłącznie z benchmarka rozdziału 12.
+Dla MongoDB stosowane jest \texttt{collection.explain("executionStats")}
+zwracające liczbę przejrzanych dokumentów (\texttt{totalDocsExamined}),
+liczbę przejrzanych kluczy indeksu (\texttt{totalKeysExamined}),
+zmierzony czas (\texttt{executionTimeMillis}) oraz typ etapu
+(\texttt{COLLSCAN}, \texttt{IXSCAN}, \texttt{TEXT\_MATCH}). Dla Neo4j
+wykonywany jest wariant \texttt{PROFILE} (a nie \texttt{EXPLAIN}, który
+nie wykonuje zapytania), zwracający dla każdego operatora liczbę
+trafień bazy (\texttt{db\_hits}) oraz nazwę operatora
+(\texttt{NodeIndexSeek}, \texttt{NodeByLabelScan}, \texttt{Expand(All)},
+\texttt{Filter}, \texttt{ProcedureCall}~itp.).
+
+Surowe plany zapisywane są w plikach \texttt{explain\_\{volume\}\_\{label\}.json},
+po czym wybrane metryki agregowane są przez moduł \texttt{Visualizer}
+do trzech zestawów wykresów -- po jednym na wolumen -- prezentujących
+zmianę typu skanu, liczbę przejrzanych wierszy oraz raportowany czas
+wykonania. Ze względu na różnice w semantyce metryk między silnikami
+(opisane w sekcji 11.2), dla MySQL i Neo4j wykresy czasu wykonania
+nie zawierają danych -- ich rolę pełnią pośrednio wykresy liczby
+przejrzanych wierszy (MySQL) i \texttt{db\_hits} (Neo4j).
+
+Dodatkowo zwracamy uwagę na praktyczne ograniczenie procedury usuwania
+indeksów dodatkowych w MySQL: silnik InnoDB nie pozwala upuścić indeksu
+chroniącego klucz obcy, więc kilka indeksów (np.
+\texttt{idx\_wh\_profile\_started} na kolumnie \texttt{profile\_id}
+będącej FK) pozostaje w bazie nawet po wywołaniu \texttt{drop\_indexes()}.
+Ich nazwy pojawiają się więc w planach wariantu \emph{no\_indexes} dla
+MySQL -- jest to celowe i odzwierciedla rzeczywiste ograniczenie
+silnika, a nie błąd pipeline'u.
+
+% -------------------------------------------------------
+\subsection{Słownik typów skanów i metryk}
+
+Każdy z czterech silników eksponuje plan wykonania w innej
+terminologii. Aby dalsza analiza była jednoznaczna, zestawiamy
+najistotniejsze pojęcia wykorzystywane w sekcji 11.3 wraz z ich
+interpretacją w kontekście wpływu indeksu.
+
+\paragraph{PostgreSQL.}
+\begin{itemize}
+    \item \texttt{Seq Scan} -- skan sekwencyjny tabeli; oznacza, że
+    optymalizator nie znalazł użytecznego indeksu lub uznał skan
+    pełny za tańszy.
+    \item \texttt{Index Scan} -- skan indeksu z bezpośrednim odwołaniem
+    do wiersza; idealny dla zapytań punktowych i uporządkowanych
+    \texttt{LIMIT}-ów.
+    \item \texttt{Bitmap Index Scan} + \texttt{Bitmap Heap Scan} --
+    silnik najpierw buduje bitmapę pasujących wierszy z indeksu, potem
+    odczytuje je z tabeli sekwencyjnie. Pojawia się przy większej liczbie
+    pasujących wierszy.
+    \item \texttt{Index Only Scan} -- wynik zwracany w całości z indeksu,
+    bez sięgania do tabeli (możliwe, gdy indeks pokrywa wszystkie
+    żądane kolumny i strony są oznaczone jako ,,visible'' w mapie).
+\end{itemize}
+
+\paragraph{MySQL (InnoDB).}
+\begin{itemize}
+    \item \texttt{ALL} -- pełny skan tabeli (odpowiednik \texttt{Seq Scan}).
+    \item \texttt{index} -- skan pełnego indeksu (bez tabeli) -- np.
+    gdy potrzebne są tylko kolumny indeksu.
+    \item \texttt{range} -- skan zakresowy indeksu
+    (\texttt{WHERE x BETWEEN a AND b} lub \texttt{WHERE x >= v}).
+    \item \texttt{ref} -- dopasowanie po kluczu nieunikalnym
+    (\texttt{WHERE fk = ?}).
+    \item \texttt{eq\_ref} -- dopasowanie po kluczu unikalnym/PK,
+    typowo w \texttt{JOIN}-ach po kluczu obcym.
+\end{itemize}
+\noindent Dodatkowa kolumna \texttt{rows\_examined\_per\_scan} jest
+głównym wskaźnikiem efektywności -- silnik szacuje, ile wierszy musi
+faktycznie odczytać.
+
+\paragraph{MongoDB (WiredTiger).}
+\begin{itemize}
+    \item \texttt{COLLSCAN} -- skan całej kolekcji.
+    \item \texttt{IXSCAN} -- skan indeksu B-drzewa.
+    \item \texttt{TEXT\_MATCH} -- użycie indeksu pełnotekstowego (\texttt{text}).
+    \item \texttt{nlj} (nested-loop join) -- pojawia się w
+    \texttt{aggregate} z lookup'em.
+\end{itemize}
+\noindent Pary metryk \texttt{totalDocsExamined} i \texttt{totalKeysExamined}
+pozwalają odróżnić, czy filtr został w pełni rozwiązany przez indeks
+(\texttt{keys $\approx$ docs}), czy też wymagał dodatkowej weryfikacji
+po stronie dokumentu.
+
+\paragraph{Neo4j.}
+\begin{itemize}
+    \item \texttt{NodeByLabelScan} -- pełny skan węzłów danej etykiety
+    (odpowiednik \texttt{Seq Scan}).
+    \item \texttt{AllNodesScan} -- skan wszystkich węzłów grafu
+    (najgorszy przypadek -- np. brak filtra po etykiecie).
+    \item \texttt{NodeIndexSeek} -- punktowe trafienie w indeks
+    zakresowy/tekstowy.
+    \item \texttt{Expand(All)} -- przejście po wszystkich relacjach
+    danego typu z węzła kotwiczącego; koszt liniowy w stopniu wierzchołka.
+    \item \texttt{ProcedureCall} -- wywołanie procedury, np.
+    \texttt{db.index.fulltext.queryNodes()} dla indeksu Lucene.
+\end{itemize}
+\noindent Główną metryką jest \texttt{db\_hits} -- liczba odczytów
+ze storage engine sumowana po całym drzewie operatorów. Im niższa,
+tym bardziej selektywny plan.
+
+% -------------------------------------------------------
+\subsection{Analiza per scenariusz}
+
+Poniżej omawiamy każdy z sześciu scenariuszy. Dla każdego mówimy
+najpierw, czego zapytanie szuka, potem co dzieje się w każdej
+z czterech baz bez indeksów i jak to się zmienia po ich założeniu.
+Liczby pochodzą z plików \texttt{explain\_small\_*.json} -- na małym
+wolumenie struktura planu jest najczytelniejsza; zachowanie na
+większych wolumenach pokazują wykresy w sekcji 11.4.
+
+\subsubsection*{S1 -- Strona główna}
+
+Zapytanie ma znaleźć 20 najpopularniejszych aktywnych filmów z gatunku
+\textit{Action}, posortowanych po popularności. Klasyczny przypadek
+listy na ekranie startowym aplikacji.
+
+Bez indeksów każda baza musi w jakiś sposób przejrzeć cały katalog
+treści -- PostgreSQL i MySQL skanują tabelę od początku do końca,
+MongoDB przelatuje 2\,000 dokumentów, Neo4j przechodzi po wszystkich
+węzłach \texttt{:Content} i je filtruje. PostgreSQL kończy w 1.32~ms,
+MongoDB w 2~ms.
+
+Po założeniu indeksów obraz zmienia się drastycznie. PostgreSQL
+trafia w indeks z warunkiem (\texttt{idx\_content\_active\_popular})
+i czyta dokładnie 20 wierszy w 0.80~ms -- czyli tyle, ile zwraca,
+ani jednego więcej. MongoDB przechodzi na skan indeksu i potrzebuje
+159 kluczy. MySQL używa indeksu po popularności i przechodzi go
+od końca, dzięki czemu od razu ma posortowane 20 wierszy. Neo4j --
+ku zaskoczeniu -- pozostaje na tych samych 1\,416 odczytach. Powód:
+filtr po gatunku w grafie idzie przez relację \texttt{HAS\_GENRE}
+do węzła \texttt{:Genre}, a \texttt{Genre.name} ma już indeks
+założony jako ograniczenie unikalności podczas ładowania (sekcja 8).
+Innymi słowy -- Neo4j i tak działa już na zindeksowanej strukturze.
+
+\begin{table}[H]
+    \centering
+    \small
+    \begin{tabular}{lllll}
+        \toprule
+        & \multicolumn{2}{c}{\textbf{Bez indeksu}} & \multicolumn{2}{c}{\textbf{Z indeksem}} \\
+        \cmidrule(lr){2-3} \cmidrule(lr){4-5}
+        \textbf{Silnik} & Operator & Wierszy & Operator & Wierszy \\
+        \midrule
+        PostgreSQL & Seq Scan        & 332   & Index Scan      & 20 \\
+        MySQL      & ALL             & 1\,929 & index           & 20 \\
+        MongoDB    & COLLSCAN        & 2\,000 & IXSCAN          & 159 \\
+        Neo4j      & NodeByLabelScan & 1\,416 & (bez zmian)     & 1\,416 \\
+        \bottomrule
+    \end{tabular}
+    \caption{S1 -- porównanie planów wykonania (wolumen \emph{small}).}
+    \label{tab:explain_s1}
+\end{table}
+
+Wniosek: trzy z czterech baz spektakularnie zyskują na indeksach,
+Neo4j ze swojej natury startuje już ,,z indeksu''.
+
+\subsubsection*{S2 -- Rekomendacje typu collaborative filtering}
+
+Najbardziej złożone zapytanie w zestawie. Najpierw szuka profili
+o podobnym guście (oglądały te same filmy co nasz profil), potem
+pobiera tytuły, które te profile widziały, ale których jeszcze nie
+obejrzał nasz profil.
+
+Bez indeksów PostgreSQL musi cztery razy przejść po historii
+oglądania -- dwa razy po pełnej tabeli (300\,000 wierszy), dwa razy
+po podzbiorach. Łącznie 144.85~ms. MongoDB skanuje całą kolekcję
+\texttt{watch\_history} (75~ms). Neo4j wykonuje 47\,509 odczytów
+ze storage'u.
+
+Po założeniu indeksów PostgreSQL spada do 72.27~ms i wykorzystuje
+indeksy \texttt{idx\_wh\_profile\_started} oraz
+\texttt{idx\_wh\_content\_id}. Jeden pełny skan jednak zostaje --
+ponieważ warunek ,,filmy, których nasz profil jeszcze nie widział''
+i tak wymusza przejście całej historii tego profilu i nie da się
+go w pełni rozłożyć na indeks. MongoDB praktycznie znika z pomiaru
+(0~ms, 12 dokumentów). Neo4j zmniejsza odczyty z 47 do 36 tysięcy,
+ale dalej nie schodzi -- bo musi rozwinąć wszystkie krawędzie
+\texttt{:WATCHED} z każdego sąsiedniego profilu, a koszt zależy
+tu od liczby krawędzi, nie od indeksu. MySQL w EXPLAIN nie pokazuje
+zauważalnej różnicy między wariantami -- bo indeks na
+\texttt{profile\_id} i tak musi pozostać (chroni klucz obcy --
+patrz uwaga w 11.1).
+
+\begin{table}[H]
+    \centering
+    \small
+    \begin{tabular}{lllll}
+        \toprule
+        & \multicolumn{2}{c}{\textbf{Bez indeksu}} & \multicolumn{2}{c}{\textbf{Z indeksem}} \\
+        \cmidrule(lr){2-3} \cmidrule(lr){4-5}
+        \textbf{Silnik} & Operator & Wierszy & Operator & Wierszy \\
+        \midrule
+        PostgreSQL & Seq Scan & 297\,284 & Bitmap Index Scan & 12 \\
+        MySQL      & ref      & 21       & ref               & 20 \\
+        MongoDB    & COLLSCAN & 300\,000 & nlj               & 12 \\
+        Neo4j      & (graf)   & 47\,509  & (graf)            & 36\,189 \\
+        \bottomrule
+    \end{tabular}
+    \caption{S2 -- porównanie planów wykonania (wolumen \emph{small}).}
+    \label{tab:explain_s2}
+\end{table}
+
+\subsubsection*{S3 -- TOP 100 najczęściej oglądanych z ostatnich miesięcy}
+
+Zliczamy wyświetlenia z ostatnich miesięcy i wybieramy 100 najwyżej
+ocenianych. Tu wpływ indeksu jest najbardziej nietypowy w całym
+zestawie.
+
+PostgreSQL bez indeksu: 32.73~ms. Z indeksem na dacie: 18.32~ms --
+i to jest cały zysk. Powód jest prosty: filtr ,,od czerwca 2025''
+zwraca co szósty wiersz tabeli, czyli i tak duży podzbiór. Czytanie
+tych wierszy z pomocą indeksu nie różni się dużo od skanu pełnego,
+bo i tak trzeba sięgnąć po większość stron z dyskiem.
+
+MongoDB w ogóle nie zyskuje (cały czas pełen skan kolekcji,
+91--163~ms zależnie od wolumenu). Powodem jest brak indeksu po
+\texttt{started\_at} w naszym zestawie -- nie zakładamy go celowo,
+bo agregacja po dacie nie należy do gorących ścieżek aplikacji.
+
+Neo4j również nie zyskuje (816\,140 odczytów w obu wariantach),
+ale z innego powodu: musi rozwinąć wszystkie krawędzie
+\texttt{:WATCHED} z całego grafu. Indeks na atrybucie krawędzi
+(\texttt{started\_at} wewnątrz \texttt{[:WATCHED]}) byłby kosztowny
+w utrzymaniu i Neo4j nie tworzy go domyślnie.
+
+Wniosek z tego scenariusza: indeks pomaga tylko wtedy, gdy filtr
+jest wąski. Przy szerokich zakresach baza i tak musi czytać
+większość danych.
+
+\begin{table}[H]
+    \centering
+    \small
+    \begin{tabular}{lllll}
+        \toprule
+        & \multicolumn{2}{c}{\textbf{Bez indeksu}} & \multicolumn{2}{c}{\textbf{Z indeksem}} \\
+        \cmidrule(lr){2-3} \cmidrule(lr){4-5}
+        \textbf{Silnik} & Operator & Wierszy & Operator & Wierszy \\
+        \midrule
+        PostgreSQL & Seq Scan & 28\,870  & Bitmap Index Scan & 28\,961 \\
+        MySQL      & ALL      & 298\,958 & range             & 56\,286 \\
+        MongoDB    & COLLSCAN & 300\,000 & COLLSCAN          & 300\,000 \\
+        Neo4j      & (graf)   & 816\,140 & (graf)            & 816\,140 \\
+        \bottomrule
+    \end{tabular}
+    \caption{S3 -- porównanie planów wykonania (wolumen \emph{small}).}
+    \label{tab:explain_s3}
+\end{table}
+
+\subsubsection*{S4 -- Wyszukiwanie po fragmencie tytułu}
+
+Zapytanie typu ,,znajdź filmy, których tytuł zawiera słowo
+\textit{Interface}''. Bez indeksu wszystkie cztery silniki muszą
+przeczytać każdy tytuł w katalogu -- na małym wolumenie kończy się
+to szybko, ale na dużym (wolumen \emph{large}) Neo4j wykonuje
+ponad 2.5~mln odczytów.
+
+Z indeksami robi się ciekawiej, bo każda baza ma inny mechanizm
+wyszukiwania pełnotekstowego:
+
+\begin{itemize}
+    \item \textbf{PostgreSQL} -- indeks GIN trigramowy z rozszerzenia
+    \texttt{pg\_trgm}, który radzi sobie nawet ze wzorcami
+    zaczynającymi się od ,,\%''. Czas: 0.53~ms.
+    \item \textbf{MongoDB} -- indeks typu \texttt{text}, czyli
+    wyspecjalizowany typ dla wyszukiwania pełnotekstowego.
+    Czas: 0--1~ms.
+    \item \textbf{Neo4j} -- indeks pełnotekstowy oparty na
+    bibliotece Lucene; wywołanie procedury
+    \texttt{db.index.fulltext.queryNodes()} daje największą redukcję
+    w całym rozdziale -- ze 170\,528 odczytów do 106.
+    \item \textbf{MySQL} -- mimo że indeks pełnotekstowy istnieje,
+    EXPLAIN go nie używa. Powód: zapytanie używa operatora
+    \texttt{LIKE '\%Interface\%'}, a indeks pełnotekstowy w MySQL
+    aktywuje się tylko z operatorem \texttt{MATCH \dots AGAINST}.
+    Optymalizator zamiast tego sięga po indeks na popularności
+    (z myślą o \texttt{ORDER BY}) i całkowicie pomija filtr po
+    tytule. Praktyczny wniosek: trzeba dopasować zapytanie do
+    dostępnego mechanizmu indeksowego, nie odwrotnie.
+\end{itemize}
+
+\begin{table}[H]
+    \centering
+    \small
+    \begin{tabular}{lllll}
+        \toprule
+        & \multicolumn{2}{c}{\textbf{Bez indeksu}} & \multicolumn{2}{c}{\textbf{Z indeksem}} \\
+        \cmidrule(lr){2-3} \cmidrule(lr){4-5}
+        \textbf{Silnik} & Operator & Wierszy & Operator & Wierszy \\
+        \midrule
+        PostgreSQL & Seq Scan       & 66       & Bitmap Index Scan & 150 \\
+        MySQL      & ALL            & 1\,929   & index             & 20 \\
+        MongoDB    & COLLSCAN       & 702      & TEXT\_MATCH       & 66 \\
+        Neo4j      & AllNodesScan   & 170\,528 & ProcedureCall     & 106 \\
+        \bottomrule
+    \end{tabular}
+    \caption{S4 -- porównanie planów wykonania (wolumen \emph{small}).}
+    \label{tab:explain_s4}
+\end{table}
+
+\subsubsection*{S5 -- Historia oglądania konkretnego profilu}
+
+Pobieramy ostatnie 50 sesji oglądania konkretnego profilu wraz
+z tytułami filmów. To modelowy przypadek dla indeksu po dwóch
+kolumnach \texttt{(profile\_id, started\_at DESC)} -- który z
+definicji daje natychmiastowy dostęp do gotowego, posortowanego
+wyniku.
+
+I tak właśnie się dzieje. PostgreSQL spada z 13.10~ms do
+\textbf{0.10~ms} -- ponad 100-krotnie. MongoDB wykonuje największy
+skok w całej analizie: ze skanu 300\,000 dokumentów (96~ms) do
+12 dokumentów odczytanych z indeksu (1~ms). Neo4j zmniejsza odczyty
+ze 141 do 98. MySQL działa stabilnie w obu wariantach -- znowu
+z powodu indeksu na kluczu obcym, którego nie da się usunąć.
+
+Najważniejsza obserwacja: \texttt{ORDER BY DESC} na drugiej kolumnie
+indeksu nie wymaga osobnego sortowania -- baza po prostu czyta
+indeks od końca. To jest właśnie istota indeksu po dwóch kolumnach
+i powód, dla którego ten scenariusz tak dobrze obrazuje wpływ
+indeksu na wydajność.
+
+\begin{table}[H]
+    \centering
+    \small
+    \begin{tabular}{lllll}
+        \toprule
+        & \multicolumn{2}{c}{\textbf{Bez indeksu}} & \multicolumn{2}{c}{\textbf{Z indeksem}} \\
+        \cmidrule(lr){2-3} \cmidrule(lr){4-5}
+        \textbf{Silnik} & Operator & Wierszy & Operator & Wierszy \\
+        \midrule
+        PostgreSQL & Seq Scan & 9        & Bitmap Heap Scan & 12 \\
+        MySQL      & ref      & 18       & ref              & 12 \\
+        MongoDB    & COLLSCAN & 300\,000 & IXSCAN           & 12 \\
+        Neo4j      & (graf)   & 141      & (graf)           & 98 \\
+        \bottomrule
+    \end{tabular}
+    \caption{S5 -- porównanie planów wykonania (wolumen \emph{small}).}
+    \label{tab:explain_s5}
+\end{table}
+
+\subsubsection*{S6 -- Filmografia osoby}
+
+Pobieramy wszystkie filmy, w których wystąpiła konkretna osoba
+(jako aktor, reżyser lub scenarzysta), posortowane po dacie
+premiery. Różnice między bazami biorą się tu przede wszystkim
+z tego, jak każda z nich modeluje powiązanie osoba--film.
+
+\textbf{PostgreSQL i MySQL} działają niemal identycznie. Przechodzą
+przez tabelę łączącą \texttt{content\_people} i pobierają tytuły
+z \texttt{content}. Z indeksem na \texttt{person\_id} PostgreSQL
+spada z 1.23~ms do 0.09~ms. MySQL korzysta z indeksu na kluczu
+obcym w obu wariantach.
+
+\textbf{MongoDB nie zyskuje praktycznie nic} -- w obu wariantach
+skanuje całą kolekcję \texttt{content} (2\,000 dokumentów). Powód:
+powiązanie osób z treścią jest osadzone wewnątrz dokumentu
+(tablica \texttt{cast[]}), a w naszym zestawie nie założyliśmy
+indeksu po polu \texttt{cast.person\_id}. Analogiczny indeks
+istnieje dla \texttt{users.profiles.profile\_id} -- przeoczenie
+warto byłoby naprawić.
+
+\textbf{Neo4j ma tu najlepszy wynik} -- 129 odczytów bez
+indeksów i 57 z indeksami. W grafie powiązanie osoba--film to
+po prostu krawędź (\texttt{ACTED\_IN}, \texttt{DIRECTED},
+\texttt{WROTE}), a etykieta \texttt{:Person} ma indeks unikalności
+założony już przy ładowaniu. Start na właściwym węźle jest
+natychmiastowy, a relacje są fizycznie reprezentowane jako
+wskaźniki -- nie ma żadnej operacji łączenia tabel ani skanu
+kolekcji. Ten scenariusz najlepiej pokazuje, że dla zapytań
+o ,,kto z kim jest powiązany'' graf wygrywa nie dlatego, że ma
+lepszy indeks, ale dlatego, że nie potrzebuje go w ogóle.
+
+\begin{table}[H]
+    \centering
+    \small
+    \begin{tabular}{lllll}
+        \toprule
+        & \multicolumn{2}{c}{\textbf{Bez indeksu}} & \multicolumn{2}{c}{\textbf{Z indeksem}} \\
+        \cmidrule(lr){2-3} \cmidrule(lr){4-5}
+        \textbf{Silnik} & Operator & Wierszy & Operator & Wierszy \\
+        \midrule
+        PostgreSQL & Seq Scan & 14       & Bitmap Heap Scan & 6 \\
+        MySQL      & ref      & 14       & ref              & 6 \\
+        MongoDB    & COLLSCAN & 2\,000   & COLLSCAN         & 2\,000 \\
+        Neo4j      & (graf)   & 129      & (graf)           & 57 \\
+        \bottomrule
+    \end{tabular}
+    \caption{S6 -- porównanie planów wykonania (wolumen \emph{small}).}
+    \label{tab:explain_s6}
+\end{table}
+
+% -------------------------------------------------------
+\subsection{Skalowanie z wolumenem}
+
+Skalowanie liczby przejrzanych wierszy oraz typów skanów wraz ze
+wzrostem wolumenu danych pokazują zbiorcze wykresy generowane
+automatycznie przez moduł \texttt{Visualizer}. Każdy z wykresów
+pokrywa wszystkie 6 scenariuszy SELECT na wszystkich 4 silnikach
+i prezentuje wariant bez indeksów obok wariantu z indeksami.
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=1.0\textwidth]{charts/explain/explain_scan_changes_small.png}
-    \caption{Zmiany typów skanów -- wolumen small, bez indeksów}
+    \caption{Zmiana typu skanu po założeniu indeksów -- wolumen small}
 \end{figure}
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=1.0\textwidth]{charts/explain/explain_scan_changes_medium.png}
-    \caption{Zmiany typów skanów -- wolumen medium, bez indeksów}
+    \caption{Zmiana typu skanu po założeniu indeksów -- wolumen medium}
 \end{figure}
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=1.0\textwidth]{charts/explain/explain_scan_changes_large.png}
-    \caption{Zmiany typów skanów -- wolumen large, bez indeksów}
+    \caption{Zmiana typu skanu po założeniu indeksów -- wolumen large}
 \end{figure}
+
+\noindent Mapy zmian potwierdzają regularność: dla scenariuszy S1,
+S4, S5 i S6 wszystkie cztery silniki przechodzą z operatora skanu
+sekwencyjnego (\texttt{Seq Scan}/\texttt{ALL}/\texttt{COLLSCAN}/\texttt{NodeByLabelScan})
+na operator indeksowy (\texttt{Index Scan}/\texttt{ref}/\texttt{IXSCAN}/\texttt{NodeIndexSeek}
+lub \texttt{ProcedureCall}). Scenariusze S2 i S3 pozostają częściowo
+nieindeksowalne -- w S2 z powodu warunku \texttt{NOT IN}, który
+wymusza sprawdzenie braku obecności wiersza w drugim zbiorze (silnik
+i tak musi przejść po większości historii profilu), a w S3 dlatego,
+że filtr po dacie \texttt{started\_at >= '\dots'} zwraca tak duży
+podzbiór tabeli, że indeks niewiele pomaga -- bitmapowy odczyt i tak
+sięga po większość stron danych.
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=1.0\textwidth]{charts/explain/explain_rows_examined_small.png}
-    \caption{Liczba przejrzanych wierszy -- wolumen small, bez indeksów}
+    \caption{Liczba przejrzanych wierszy/dokumentów/db\_hits -- wolumen small}
 \end{figure}
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=1.0\textwidth]{charts/explain/explain_rows_examined_medium.png}
-    \caption{Liczba przejrzanych wierszy -- wolumen medium, bez indeksów}
+    \caption{Liczba przejrzanych wierszy/dokumentów/db\_hits -- wolumen medium}
 \end{figure}
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=1.0\textwidth]{charts/explain/explain_rows_examined_large.png}
-    \caption{Liczba przejrzanych wierszy -- wolumen large, bez indeksów}
+    \caption{Liczba przejrzanych wierszy/dokumentów/db\_hits -- wolumen large}
 \end{figure}
 
-% -------------------------------------------------------
-
-\subsection{Wyniki z indeksami}
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=1.0\textwidth]{charts/explain/explain_scan_changes_small.png}
-    \caption{Zmiany typów skanów -- wolumen small, z indeksami}
-\end{figure}
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=1.0\textwidth]{charts/explain/explain_scan_changes_medium.png}
-    \caption{Zmiany typów skanów -- wolumen medium, z indeksami}
-\end{figure}
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=1.0\textwidth]{charts/explain/explain_scan_changes_large.png}
-    \caption{Zmiany typów skanów -- wolumen large, z indeksami}
-\end{figure}
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=1.0\textwidth]{charts/explain/explain_rows_examined_small.png}
-    \caption{Liczba przejrzanych wierszy -- wolumen small, z indeksami}
-\end{figure}
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=1.0\textwidth]{charts/explain/explain_rows_examined_medium.png}
-    \caption{Liczba przejrzanych wierszy -- wolumen medium, z indeksami}
-\end{figure}
-
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=1.0\textwidth]{charts/explain/explain_rows_examined_large.png}
-    \caption{Liczba przejrzanych wierszy -- wolumen large, z indeksami}
-\end{figure}
-
-% -------------------------------------------------------
-
-\subsection{Porównanie i wykresy}
+\noindent Wykresy liczby przejrzanych wierszy najlepiej pokazują
+różnicę asymptotyczną. Bez indeksów wartości skalują się \emph{liniowo}
+z wolumenem -- przykładowo S2 dla MongoDB: 300\,000 dokumentów
+na \emph{small}, 500\,000 na \emph{medium}, 6\,000\,000 na \emph{large}
+(dokładnie tyle, ile zawiera kolekcja \texttt{watch\_history}).
+Z indeksami liczba ta spada o trzy do sześciu rzędów wielkości:
+S5 dla MongoDB schodzi z 6\,000\,000 na 25 dokumentów, a S1 dla
+PostgreSQL z 2\,401 na 20 wierszy -- czyli dokładnie tyle, ile
+zwraca \texttt{LIMIT 20}. To jest empiryczne potwierdzenie hipotezy
+pracy w domenie SELECT.
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=1.0\textwidth]{charts/explain/explain_exec_time_small.png}
-    \caption{Czas wykonania zapytań SELECT -- wolumen small}
+    \caption{Raportowany czas wykonania (wolumen small) -- tylko PostgreSQL i MongoDB}
 \end{figure}
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=1.0\textwidth]{charts/explain/explain_exec_time_medium.png}
-    \caption{Czas wykonania zapytań SELECT -- wolumen medium}
+    \caption{Raportowany czas wykonania (wolumen medium) -- tylko PostgreSQL i MongoDB}
 \end{figure}
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=1.0\textwidth]{charts/explain/explain_exec_time_large.png}
-    \caption{Czas wykonania zapytań SELECT -- wolumen large}
+    \caption{Raportowany czas wykonania (wolumen large) -- tylko PostgreSQL i MongoDB}
 \end{figure}
+
+\noindent Wykresy czasu wykonania zawierają dane wyłącznie dla
+PostgreSQL i MongoDB -- jedynych dwóch silników raportujących
+zmierzony czas po stronie EXPLAIN (PostgreSQL przez
+\texttt{ANALYZE}, MongoDB przez \texttt{executionTimeMillis}).
+Wartości MySQL zostałyby tu zerowe, bo \texttt{EXPLAIN FORMAT=JSON}
+nie wykonuje zapytania, a Neo4j \texttt{PROFILE} raportuje
+\texttt{db\_hits}, nie milisekundy. Aby porównać te dwa silniki
+ilościowo, należy odwołać się do pomiarów czasu z rozdziału 12,
+mierzonych przez warstwę orkiestracji \texttt{BenchmarkRunner}
+jednolicie dla wszystkich czterech baz.
+
+% -------------------------------------------------------
+\subsection{Wnioski}
+
+Analiza planów wykonania prowadzi do czterech głównych obserwacji
+istotnych dla weryfikacji hipotezy pracy.
+
+\textbf{Indeksy zmieniają operatora w zdecydowanej większości
+scenariuszy SELECT}. Dla S1, S4, S5 i S6 wszystkie cztery silniki
+przechodzą ze skanu pełnego na strategie indeksowe -- empiryczne
+potwierdzenie, że dobrana siatka indeksów (rozdział 8) faktycznie
+trafia w gorące ścieżki. Wyjątkami są S2 i S3, w których struktura
+zapytania (\texttt{NOT IN}, niska selektywność zakresu) ogranicza
+korzyść z indeksu. Te dwa scenariusze najlepiej pokazują, że indeks
+nie jest panaceum -- jego skuteczność zależy od selektywności
+predykatu i kształtu zapytania.
+
+\textbf{Każdy silnik ma swoje ,,silne'' i ,,słabe'' scenariusze, które
+wynikają z architektury, a nie z konfiguracji}. PostgreSQL zyskuje
+najwięcej dzięki bogactwu typów indeksów (partial, GIN trigramowy,
+GIN dla \texttt{jsonb}). MongoDB demonstruje największą \emph{względną}
+poprawę (S5: 300\,000~$\rightarrow$~12 dokumentów), ponieważ bez indeksu
+konieczny jest \texttt{COLLSCAN} po milionach dokumentów -- ale
+tam, gdzie indeks pasuje do dostępu, wynik jest natychmiastowy.
+Neo4j wygrywa scenariusze nawigacyjne (S6) niezależnie od wariantu
+indeksowego, ponieważ relacje są fizycznymi wskaźnikami, a nie
+wynikiem złączenia tablic; jednocześnie najmniej zyskuje na
+indeksach atrybutowych w scenariuszach typu S1/S5, w których
+ograniczenia unikalności już zapewniły indeks zakresowy.
+
+\textbf{MySQL wykazuje strukturalne ograniczenia w EXPLAIN-ie}, które
+zaciemniają porównanie z pozostałymi bazami: brak zmierzonego czasu
+(tylko szacunki), brak możliwości upuszczenia indeksów chroniących
+FK (część nazw indeksów dodatkowych pojawia się w wariancie
+\emph{no\_indexes}), oraz nieoczekiwany wybór planu w S4 (filtr
+\texttt{LIKE '\%term\%'} z indeksem \texttt{FULLTEXT} aktywnym tylko
+dla operatora \texttt{MATCH \dots AGAINST}). Te obserwacje są
+istotne dla interpretacji wyników rozdziału 12 -- pomiary czasu MySQL
+są wiarygodne, ale rozkład planów już niekoniecznie odzwierciedla
+,,świat bez indeksów''.
+
+\textbf{Skalowanie jest najsilniejszym argumentem za hipotezą}. Liczba
+przejrzanych wierszy bez indeksów rośnie liniowo z wolumenem
+(\emph{small}~$\rightarrow$~\emph{large}: $\times$20 wierszy danych
+$=$ $\times$20 przejrzanych wierszy), a z indeksami pozostaje praktycznie
+stała na poziomie liczby zwracanych wierszy. Ten kontrast widać na
+wykresach \texttt{explain\_rows\_examined\_*} i jest on bezpośrednią
+przyczyną różnic w pomiarach czasu z rozdziału 12 -- dla wolumenu
+\emph{large} pojedyncze SELECT-y bez indeksu osiągają sekundy,
+podczas gdy z indeksami pozostają w milisekundach.
