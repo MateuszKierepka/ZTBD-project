@@ -46,8 +46,8 @@ rekordzie.
     \caption{S2 -- Filtrowanie kolaboratywne}
 \end{figure}
 
-\textbf{Neo4j miażdży konkurencję} -- 15~ms bez indeksów, 19~ms z
-indeksami. Pozostałe bazy bez indeksów osiągają sekundy:
+\textbf{Neo4j zostawia konkurencję daleko z tyłu} -- 15~ms bez
+indeksów, 19~ms z indeksami. Pozostałe bazy bez indeksów osiągają sekundy:
 PostgreSQL 755~ms, MySQL 270~ms, Mongo \emph{3.4~sekundy} (skan
 6 milionów dokumentów). Z indeksami PG schodzi do 142~ms, Mongo do
 255~ms -- ale Neo4j i tak pozostaje 8--15× szybszy. Ten scenariusz
@@ -170,7 +170,8 @@ z hipotezą.
     \caption{U3 -- Masowa zmiana planu subskrypcji}
 \end{figure}
 
-Penalizacja indeksów osiąga maksimum. PostgreSQL bez indeksu
+Koszt utrzymania indeksów przy modyfikacji wierszy osiąga tu
+maksimum. PostgreSQL bez indeksu
 158~ms, z indeksem \emph{380~ms} -- \textbf{2.4-krotne pogorszenie}.
 MySQL 678 → 996~ms (1.5×), Neo4j 803 → 909~ms (1.1×), MongoDB
 599 → 560~ms (lekko lepiej). Operacja modyfikuje pole \texttt{plan\_name}

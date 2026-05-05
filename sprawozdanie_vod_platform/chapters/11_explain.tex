@@ -211,7 +211,7 @@ po podzbiorach. Łącznie 144.85~ms. MongoDB skanuje całą kolekcję
 ze storage'u.
 
 Po założeniu indeksów PostgreSQL spada do 72.27~ms i wykorzystuje
-indeksy \texttt{idx\_wh\_profile\_started} oraz
+indeksy \\\texttt{idx\_wh\_profile\_started} oraz
 \texttt{idx\_wh\_content\_id}. Jeden pełny skan jednak zostaje --
 ponieważ warunek ,,filmy, których nasz profil jeszcze nie widział''
 i tak wymusza przejście całej historii tego profilu i nie da się
@@ -258,7 +258,8 @@ bo i tak trzeba sięgnąć po większość stron z dyskiem.
 MongoDB w ogóle nie zyskuje (cały czas pełen skan kolekcji,
 91--163~ms zależnie od wolumenu). Powodem jest brak indeksu po
 \texttt{started\_at} w naszym zestawie -- nie zakładamy go celowo,
-bo agregacja po dacie nie należy do gorących ścieżek aplikacji.
+bo agregacja po dacie nie jest typowym, często wykonywanym zapytaniem
+w aplikacji.
 
 Neo4j również nie zyskuje (816\,140 odczytów w obu wariantach),
 ale z innego powodu: musi rozwinąć wszystkie krawędzie

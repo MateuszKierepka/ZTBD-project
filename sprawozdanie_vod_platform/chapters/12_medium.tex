@@ -154,7 +154,8 @@ na samą operację zapisu, bo modyfikujemy jeden wiersz.
     \caption{U3 -- Masowa zmiana planu subskrypcji}
 \end{figure}
 
-\emph{Penalizacja indeksów rośnie}. PostgreSQL bez indeksu 30~ms,
+Koszt utrzymania indeksów przy modyfikacji wierszy zaczyna być
+zauważalny. PostgreSQL bez indeksu 30~ms,
 z indeksem 65~ms (ponad dwukrotne pogorszenie). MySQL 124 → 179~ms,
 Mongo 107 → 104~ms (tu indeks praktycznie neutralny). Neo4j
 zachowuje się odwrotnie -- 194 → 158~ms (lekkie polepszenie),

@@ -116,36 +116,60 @@ map cieplnych znajduje się w rozdziale~13.
 
 \subsection{Wolumen large - 10 000 000 rekordów}
 \input{chapters/12_large}
+
+\subsection{Synteza skalowalności}
+
+Poniższy wykres syntezuje wyniki rozdziałów 12.1--12.3 do jednego
+widoku per kategoria CRUD. Każdy z czterech wykresów pokazuje, jak
+medianowy czas wykonania w danej kategorii operacji rośnie ze wzrostem
+wolumenu danych dla każdego z silników -- jest to ujęcie całościowe 
+30 wykresów szczegółowych z poprzednich podsekcji.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.0\textwidth]{charts/volume_scaling.png}
+    \caption{Skalowalność medianowego czasu wykonania per kategoria
+    CRUD i silnik. Oś Y w milisekundach, oś X to wolumen danych.}
+\end{figure}
+
+Cztery panele odsłaniają cztery różne wzorce skalowania.
+\textbf{INSERT} skaluje się liniowo z wolumenem we wszystkich
+silnikach -- bo bulk import jest immanentnie operacją proporcjonalną
+do liczby wstawianych rekordów. MongoDB zachowuje przewagę na każdym
+wolumenie, ale dystans między bazami pozostaje względnie stały.
+
+\textbf{SELECT} pokazuje wyraźną dychotomię. PostgreSQL, MySQL i Neo4j
+utrzymują czas medianowy na poziomie kilku milisekund niezależnie
+od wolumenu -- bo dla zindeksowanych zapytań koszt nie zależy od
+rozmiaru tabeli. MongoDB zdecydowanie wyłamuje się  -- ze
+względu na obecność scenariusza S2 (collaborative filtering), w którym
+bez indeksu na profilu silnik skanuje całą kolekcję; mediana SELECT-ów
+podnosi się więc do 110~ms na \emph{large}.
+
+\textbf{UPDATE} jest dla większości silników niezależny od wolumenu
+(2--16~ms), z jednym wyjątkiem: MongoDB skacze do 50~ms na \emph{large}
+-- to konsekwencja kilku scenariuszy z masowym \texttt{updateMany}
+po polach nieindeksowanych.
+
+\textbf{DELETE} pokazuje najsilniejsze rozejście się silników.
+PostgreSQL utrzymuje 8--145~ms (lekki wzrost przez D6 bez indeksu
+w starszych pomiarach), a MongoDB rośnie wykładniczo do 645~ms na
+\emph{large} -- liniowe skalowanie skanu kolekcji w scenariuszach
+typu D4 i D6 dominuje medianę kategorii. MySQL i Neo4j pozostają
+płaskie poniżej 20~ms na każdym wolumenie.
+
+Wniosek z tego widoku: rzeczywista skalowalność silnika nie
+wynika z samej technologii, ale z dostępu indeksowego. PostgreSQL,
+MySQL i Neo4j ,,trzymają się płasko'' na SELECT/UPDATE/DELETE
+głównie dzięki indeksom; MongoDB wyłamuje się tam, gdzie indeksu
+zabrakło. To bezpośrednie potwierdzenie hipotezy z kolejnego
+rozdziału -- na \emph{large} brak indeksu nie jest już niewygodą,
+tylko różnicą o rząd lub dwa wielkości.
 % -------------------------------------------------------
 
 
 \section{Analiza wyników i weryfikacja hipotezy}
-
-Hipoteza zakłada, że zastosowanie indeksów znacząco poprawia wydajność
-operacji SELECT kosztem spadku wydajności operacji INSERT i UPDATE.
-
-Poniższe heatmapy przedstawiają stosunek czasu wykonania z indeksami
-do czasu bez indeksów dla każdego scenariusza i każdej bazy danych.
-Kolor zielony oznacza że indeks przyspieszył operację (wartość poniżej 1.0),
-kolor czerwony że ją spowolnił (wartość powyżej 1.0).
- 
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=1.0\textwidth]{charts/small/index_heatmap_small.png}
-    \caption{Mapa cieplna wpływu indeksów na wydajność -- wolumen small}
-\end{figure}
- 
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=1.0\textwidth]{charts/medium/index_heatmap_medium.png}
-    \caption{Mapa cieplna wpływu indeksów na wydajność -- wolumen medium}
-\end{figure}
- 
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=1.0\textwidth]{charts/large/index_heatmap_large.png}
-    \caption{Mapa cieplna wpływu indeksów na wydajność -- wolumen large}
-\end{figure}
+\input{chapters/13_hypothesis}
 % -------------------------------------------------------
 \section{Podsumowanie}
 

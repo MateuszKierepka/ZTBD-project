@@ -28,8 +28,8 @@ indeksów dodatkowych.
     \caption{I3 -- Dodanie serialu z pełnym drzewem}
 \end{figure}
 
-Tu MongoDB \emph{miażdży} konkurencję -- 0.9~ms wobec 17--25~ms
-w pozostałych bazach. Powód jest prosty: w modelu dokumentowym serial
+MongoDB jest tu wielokrotnie szybszy od pozostałych silników --
+0.9~ms wobec 17--25~ms u konkurencji. Powód jest prosty: w modelu dokumentowym serial
 z sezonami i odcinkami to \emph{jeden} dokument zapisywany jednym
 wywołaniem \texttt{insert\_one}. W bazach relacyjnych ten sam serial
 wymaga osobnych \texttt{INSERT}-ów do tabel \texttt{content},
@@ -87,8 +87,8 @@ zapytania (np. agregacje) jest istotniejsza niż obecność indeksu.
     \caption{S4 -- Wyszukiwanie pełnotekstowe po tytule}
 \end{figure}
 
-Na małym wolumenie wszystkie cztery silniki radzą sobie szybko
-(1.4--7~ms), więc różnice między wariantami są mało spektakularne.
+Na małym wolumenie wszystkie cztery silniki kończą zapytanie w
+1.4--7~ms, więc różnice między wariantami są niewielkie.
 Najwolniejsze jest Neo4j (6.7~ms) -- skan wszystkich węzłów
 \texttt{:Content} jest w tej skali odczuwalny. PostgreSQL i MySQL
 bez indeksu kończą w niespełna 2~ms, bo w tabeli jest tylko
