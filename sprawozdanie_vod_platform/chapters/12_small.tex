@@ -10,12 +10,34 @@
     \caption{I2 -- Bulk import ocen}
 \end{figure}
 
+MongoDB jest tu wyraźnie najszybszy (36~ms vs 190--290~ms w pozostałych
+silnikach) -- wstawianie dokumentów do kolekcji bez walidacji schematu
+jest tańsze niż klasyczny \texttt{INSERT} z kontrolą kluczy obcych
+i typów. Założenie indeksów spowalnia Mongo \emph{trzykrotnie}
+(z 36 do 111~ms), ponieważ każdy wstawiany dokument musi
+zaktualizować strukturę indeksu -- co dobrze potwierdza drugą część
+hipotezy pracy. PostgreSQL i MySQL prawie nie odczuwają tej różnicy
+między wariantami, bo ich nadrzędna prędkość \texttt{INSERT}-a
+i tak jest ograniczona przez WAL/redo log, a nie przez liczbę
+indeksów dodatkowych.
+
 \subsubsection{I3: Dodanie serialu z pełnym drzewem}
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.8\textwidth]{charts/small/chart_I3.png}
     \caption{I3 -- Dodanie serialu z pełnym drzewem}
 \end{figure}
+
+Tu MongoDB \emph{miażdży} konkurencję -- 0.9~ms wobec 17--25~ms
+w pozostałych bazach. Powód jest prosty: w modelu dokumentowym serial
+z sezonami i odcinkami to \emph{jeden} dokument zapisywany jednym
+wywołaniem \texttt{insert\_one}. W bazach relacyjnych ten sam serial
+wymaga osobnych \texttt{INSERT}-ów do tabel \texttt{content},
+\texttt{seasons} i \texttt{episodes}, a w Neo4j -- wielu
+\texttt{CREATE} dla węzłów i relacji. Indeksy nie wpływają tu
+istotnie -- wszystkie operacje są \texttt{INSERT}-ami pojedynczych
+encji rzędu kilkunastu rekordów, a koszt zapisu indeksu na takiej
+wielkości jest w granicach szumu pomiarowego.
 
 % -------------------------------------------------------
 % SELECT
@@ -28,6 +50,18 @@
     \caption{S2 -- Filtrowanie kolaboratywne}
 \end{figure}
 
+MySQL wygrywa we wszystkich wariantach -- dzięki temu, że indeks na
+\texttt{profile\_id} jest niemożliwy do upuszczenia (chroni FK -- patrz
+uwaga w 11.1), MySQL i tak korzysta z optymalnego planu nawet w
+wariancie ,,bez indeksów''. Najmocniejszy zysk daje MongoDB,
+który spada ze 158~ms do 16~ms -- to potwierdza obserwację z 11.3,
+że bez indeksu na \texttt{profile\_id} Mongo musi skanować całą
+kolekcję \texttt{watch\_history}. PostgreSQL halnie czas (z 78 do
+40~ms), ale dalej zostaje mu rezydualny \texttt{Seq Scan} z
+podzapytania \texttt{NOT IN}. Neo4j najmniej zyskuje, bo i tak
+operuje na strukturze grafu, w której indeksy na atrybutach mają
+mniejsze znaczenie niż przejścia po krawędziach.
+
 \subsubsection{S3: TOP 100 według liczby ocen w okresie}
 \begin{figure}[H]
     \centering
@@ -35,12 +69,33 @@
     \caption{S3 -- TOP 100 według liczby ocen w okresie}
 \end{figure}
 
+PostgreSQL prowadzi (14--16~ms), za nim MongoDB (26--28~ms),
+a najwolniejsze są MySQL i Neo4j (38--71~ms). Kluczowa obserwacja:
+\textbf{indeks praktycznie nie pomaga} -- w żadnym z silników nie ma
+zauważalnej różnicy między wariantami, w MySQL i PostgreSQL nawet
+występuje minimalne pogorszenie. Zgadza się to z analizą EXPLAIN
+z 11.3: filtr po dacie zwraca tak szeroki zbiór wierszy, że indeks
+na \texttt{started\_at} nie zmienia faktu, że trzeba przeczytać
+większość tabeli. Ten scenariusz pokazuje granicę użyteczności
+indeksu -- dla zapytań z niską selektywnością strukturalna optymalizacja
+zapytania (np. agregacje) jest istotniejsza niż obecność indeksu.
+
 \subsubsection{S4: Wyszukiwanie pełnotekstowe po tytule}
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.8\textwidth]{charts/small/chart_S4.png}
     \caption{S4 -- Wyszukiwanie pełnotekstowe po tytule}
 \end{figure}
+
+Na małym wolumenie wszystkie cztery silniki radzą sobie szybko
+(1.4--7~ms), więc różnice między wariantami są mało spektakularne.
+Najwolniejsze jest Neo4j (6.7~ms) -- skan wszystkich węzłów
+\texttt{:Content} jest w tej skali odczuwalny. PostgreSQL i MySQL
+bez indeksu kończą w niespełna 2~ms, bo w tabeli jest tylko
+2\,000 tytułów do przeszukania. Prawdziwa wartość indeksów
+pełnotekstowych ujawni się dopiero na wolumenach \emph{medium}
+i \emph{large}, gdzie różnica między skanem pełnym a indeksem
+sięga rzędów wielkości.
 
 % -------------------------------------------------------
 % DELETE
@@ -53,6 +108,18 @@
     \caption{D1 -- Usunięcie treści z kaskadą}
 \end{figure}
 
+PostgreSQL pokazuje tu drugą połowę hipotezy w dobrym świetle:
+bez indeksów 17~ms, z indeksami \emph{1.2~ms} -- przyspieszenie
+o rząd wielkości. Powodem jest to, że kaskadowe usunięcie
+(\texttt{ON DELETE CASCADE}) wymaga znalezienia wszystkich wierszy
+potomnych po kluczu obcym -- bez indeksu na FK to oznacza pełen
+skan tabel \texttt{watch\_history}, \texttt{ratings} i \texttt{my\_list}.
+MongoDB jest tu najwolniejszy w obu wariantach (91~ms / 22~ms),
+ponieważ usunięcie treści wymaga skasowania wszystkich powiązanych
+dokumentów w innych kolekcjach. MySQL ma stały czas 6~ms, bo indeks
+na FK jest u niego zawsze obecny. Neo4j 11--12~ms -- relacje wskazują
+na właściwe węzły, więc kaskada to po prostu usunięcie tych krawędzi.
+
 \subsubsection{D4: Usunięcie pozycji z listy}
 \begin{figure}[H]
     \centering
@@ -60,12 +127,32 @@
     \caption{D4 -- Usunięcie pozycji z listy}
 \end{figure}
 
+Najprostsza operacja w zestawie -- usunięcie jednego wiersza po
+kluczu głównym. PostgreSQL kończy w 1~ms w obu wariantach,
+MongoDB z indeksem zjeżdża do 0.6~ms. Bez indeksu MongoDB potrzebuje
+20~ms -- klasyczny przypadek, w którym \texttt{deleteOne} bez
+indeksu i tak musi przeskanować kolekcję, żeby znaleźć dokument
+do usunięcia. To samo zjawisko będzie się skalować liniowo
+z wolumenem (zobaczymy 200~ms na \emph{large}). MySQL i Neo4j
+działają stabilnie 5--8~ms.
+
 \subsubsection{D6: Masowe usunięcie nieaktywnych użytkowników}
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.8\textwidth]{charts/small/chart_D6.png}
     \caption{D6 -- Masowe usunięcie nieaktywnych użytkowników}
 \end{figure}
+
+Pierwszy scenariusz, w którym brak indeksu boli naprawdę mocno --
+PostgreSQL bez indeksu na \texttt{users.status} kończy w 37~ms,
+a z indeksem w 1.2~ms (30-krotnie szybciej). To kluczowy wynik
+wspierający hipotezę: indeks dramatycznie przyspiesza znajdowanie
+podzbioru wierszy do usunięcia, bo zamiast pełnego skanu \texttt{users}
+silnik trafia od razu na rekordy ze statusem ,,inactive''. MongoDB
+i Neo4j również zyskują (0.8 i 7~ms odpowiednio), ale dystans nie
+jest tak spektakularny. \emph{Spektakularne} skutki braku indeksu
+zobaczymy dopiero na większych wolumenach -- na \emph{large}
+PostgreSQL bez indeksu osiągnie pomiar mierzony w \emph{sekundach}.
 
 % -------------------------------------------------------
 % UPDATE
@@ -78,9 +165,31 @@
     \caption{U2 -- Przeliczenie średniej oceny}
 \end{figure}
 
+PostgreSQL z indeksem schodzi z 3.7~ms do 1.3~ms, MongoDB z 11~ms
+do 1.7~ms. Operacja przelicza średnią ocenę wybranego filmu
+i wykonuje \texttt{UPDATE} pojedynczego wiersza/dokumentu --
+indeks pomaga zlokalizować zarówno źródłowe oceny (\texttt{ratings})
+jak i wiersz w \texttt{content}. MySQL ma stały czas 6~ms, Neo4j
+4--6~ms. To typowy operacyjny scenariusz, w którym indeks działa
+zgodnie z oczekiwaniami -- punktowy filtr + pojedyncza modyfikacja
+to klasyczny ,,słodki punkt'' indeksu dodatkowego, czyli wąski filtr
+\texttt{WHERE} bez konfliktu z dużymi zapisami.
+
 \subsubsection{U3: Masowa zmiana planu subskrypcji}
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.8\textwidth]{charts/small/chart_U3.png}
     \caption{U3 -- Masowa zmiana planu subskrypcji}
 \end{figure}
+
+Najciekawszy wynik tej kategorii i \emph{dowód kosztu indeksów dla
+operacji zapisu}. PostgreSQL bez indeksu kończy w 8.9~ms, z indeksem
+w \emph{16.9~ms} -- czyli założenie indeksów pogorszyło wydajność
+prawie dwukrotnie. To samo widać w MySQL (38 → 52~ms), Mongo
+(29 → 33~ms) i Neo4j (53 → 43~ms tylko z lekkim odchyleniem).
+Operacja modyfikuje pole \texttt{plan\_name} w wielu wierszach
+\texttt{subscriptions} -- każdy zaktualizowany wiersz wymaga
+przepisania w indeksie \texttt{idx\_subscriptions\_status\_plan},
+co dodaje stały narzut do każdej zmiany. Ten scenariusz najwyraźniej
+ze wszystkich potwierdza drugą część hipotezy: indeksy podnoszą
+koszt operacji \texttt{UPDATE} na kolumnach indeksowanych.

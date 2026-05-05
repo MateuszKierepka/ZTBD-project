@@ -95,6 +95,19 @@ kategorie INSERT, SELECT, UPDATE i DELETE.
 
 % -------------------------------------------------------
 \section{Testy wydajnościowe}
+
+W tym rozdziale prezentujemy zmierzone czasy wykonania dla 10 wybranych
+scenariuszy CRUD (po kilka z każdej kategorii: INSERT, SELECT, UPDATE,
+DELETE) na trzech wolumenach danych. Każdy wykres pokazuje cztery
+silniki obok siebie w dwóch wariantach -- bez indeksów dodatkowych
+i z nimi. Wartość prezentowana jako słupek to mediana z trzech prób
+(\texttt{trials}=3), opisana w sekcji 9.1; ewentualne wąsy oznaczają
+zakres min--max. Czas obejmuje wyłącznie blok \texttt{run()} scenariusza
+mierzony przez \texttt{time.perf\_counter\_ns()} po stronie warstwy
+orkiestracji w Pythonie -- bez fazy \texttt{setup} i \texttt{teardown}.
+Pełna analiza wpływu indeksów na wszystkie 24 scenariusze w postaci
+map cieplnych znajduje się w rozdziale~13.
+
 \subsection{Wolumen small - 500 000 rekordów}
 \input{chapters/12_small}
 

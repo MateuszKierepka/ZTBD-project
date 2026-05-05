@@ -9,7 +9,7 @@ a bez tego trudno powiedzieć cokolwiek sensownego o tym, dlaczego
 jedna baza wygrywa, a druga przegrywa w danym scenariuszu.
 
 Analiza opiera się na sześciu scenariuszach SELECT zdefiniowanych
-w module \texttt{src/benchmarks/explain\_analyzer.py}, dobranych tak,
+w module \\\texttt{src/benchmarks/explain\_analyzer.py}, dobranych tak,
 żeby pokryć typowe wzorce dostępu do bazy w aplikacji typu VOD:
 
 \begin{itemize}
@@ -30,13 +30,12 @@ w module \texttt{src/benchmarks/explain\_analyzer.py}, dobranych tak,
 
 Plan wykonania pozyskiwany jest natywnym mechanizmem każdego silnika.
 Dla PostgreSQL wykorzystywany jest wariant
-\texttt{EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)} -- który \emph{faktycznie
-wykonuje} zapytanie i raportuje rzeczywiste czasy wykonania
-(\texttt{Execution Time}), pełny koszt planu oraz typ każdego skanu
+\texttt{EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)} -- który faktycznie
+wykonuje zapytanie i raportuje rzeczywiste czasy wykonania, pełny koszt planu oraz typ każdego skanu
 (\texttt{Seq Scan}, \texttt{Index Scan}, \texttt{Bitmap Heap Scan},
 \texttt{Bitmap Index Scan}). Dla MySQL używany jest
 \texttt{EXPLAIN FORMAT=JSON}, który -- inaczej niż w PostgreSQL --
-\emph{nie wykonuje} zapytania, lecz zwraca wyłącznie szacunki optymalizatora:
+nie wykonuje zapytania, lecz zwraca wyłącznie szacunki optymalizatora:
 typ dostępu (\texttt{access\_type}), wykorzystany klucz (\texttt{key})
 oraz przewidywaną liczbę przejrzanych wierszy
 (\texttt{rows\_examined\_per\_scan}). Z tego powodu w analizie MySQL

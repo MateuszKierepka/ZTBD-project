@@ -10,12 +10,29 @@
     \caption{I2 -- Bulk import ocen}
 \end{figure}
 
+Wzrost wolumenu ujawnia, jak bardzo \texttt{INSERT} jest operacją
+liniową w liczbie wstawianych wierszy. PostgreSQL i MySQL skaczą
+z 270/190~ms na 1.2/1.4~s -- niemal pięciokrotnie. MongoDB zachowuje
+przewagę (461~ms vs 1.2--3.5~s u konkurencji), ale traci ją po
+założeniu indeksów (1.1~s -- prawie tyle co PostgreSQL). Neo4j
+płaci najwyższą cenę -- 3.5~s niezależnie od indeksów -- co wynika
+z konieczności tworzenia osobnych węzłów \texttt{:Rating} dla każdej
+oceny i wiązania ich relacjami do \texttt{:Profile} i \texttt{:Content}.
+
 \subsubsection{I3: Dodanie serialu z pełnym drzewem}
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.8\textwidth]{charts/medium/chart_I3.png}
     \caption{I3 -- Dodanie serialu z pełnym drzewem}
 \end{figure}
+
+Rozkład sił identyczny jak na \emph{small} -- dowód, że ten scenariusz
+jest praktycznie \emph{niezależny od wolumenu danych} (wstawiamy
+zawsze ten sam ,,jeden serial''). MongoDB \emph{0.7~ms}, pozostali
+15--30~ms. Niezmienność wyniku potwierdza, że koszt \texttt{INSERT}-a
+pojedynczej encji nie zależy od rozmiaru tabeli docelowej -- liczy
+się tylko narzut samej operacji zapisu i utrzymania indeksów na tym
+konkretnym wierszu.
 
 % -------------------------------------------------------
 % SELECT
@@ -28,6 +45,13 @@
     \caption{S2 -- Filtrowanie kolaboratywne}
 \end{figure}
 
+Indeksy zaczynają działać spektakularnie. Z indeksami \emph{wszystkie}
+silniki schodzą do 1.6--5.5~ms -- a bez nich PostgreSQL i MongoDB
+mierzą się z 40--97~ms. To pierwszy moment, w którym hipoteza pracy
+ma jednoznacznie potwierdzającą postać: indeks redukuje czas SELECT-a
+o \emph{rząd wielkości lub więcej}. Neo4j najszybszy bez indeksów
+(8~ms) -- struktura grafu zaczyna się tu opłacać.
+
 \subsubsection{S3: TOP 100 według liczby ocen w okresie}
 \begin{figure}[H]
     \centering
@@ -35,12 +59,28 @@
     \caption{S3 -- TOP 100 według liczby ocen w okresie}
 \end{figure}
 
+Trend ze \emph{small} się utrzymuje -- indeks niewiele pomaga, bo
+filtr ,,od czerwca'' pokrywa za szeroki podzbiór. PostgreSQL nadal
+najszybszy (15--18~ms), Neo4j skacze do 100~ms ze względu na koszt
+przechodzenia po wszystkich krawędziach \texttt{:WATCHED}.
+MySQL stabilnie 60~ms. Brak istotnej różnicy między wariantami
+indeksowymi w żadnym z silników.
+
 \subsubsection{S4: Wyszukiwanie pełnotekstowe po tytule}
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.8\textwidth]{charts/medium/chart_S4.png}
     \caption{S4 -- Wyszukiwanie pełnotekstowe po tytule}
 \end{figure}
+
+Tu dopiero widać prawdziwą wartość indeksu pełnotekstowego.
+Bez indeksów Neo4j wykonuje \texttt{AllNodesScan} na 5\,000 węzłach --
+30~ms. Z indeksem (\texttt{db.index.fulltext.queryNodes}) schodzi do
+4~ms. PostgreSQL z trygramowym GIN-em: 0.9~ms (poprawa o 4×).
+MongoDB z indeksem \texttt{text}: 1.2~ms (poprawa o 4×). MySQL --
+jak pokazaliśmy w 11.3 -- nie aktywuje indeksu \texttt{FULLTEXT}
+dla operatora \texttt{LIKE '\%term\%'}, więc obie wartości są
+porównywalne (2.8 / 1.3~ms).
 
 % -------------------------------------------------------
 % DELETE
@@ -53,6 +93,13 @@
     \caption{D1 -- Usunięcie treści z kaskadą}
 \end{figure}
 
+Skala intensyfikuje obraz znany ze \emph{small}: PostgreSQL bez
+indeksu 24~ms, z indeksem 1.3~ms (18-krotne przyspieszenie). MongoDB
+bez indeksu 136~ms, z indeksem 57~ms (2.4-krotnie). MySQL i Neo4j
+działają stabilnie 6 i 9~ms odpowiednio. Indeksy na FK są tu
+\emph{kluczowe} -- bez nich kaskadowe usunięcie staje się sumą
+pełnych skanów wszystkich tabel zależnych.
+
 \subsubsection{D4: Usunięcie pozycji z listy}
 \begin{figure}[H]
     \centering
@@ -60,12 +107,27 @@
     \caption{D4 -- Usunięcie pozycji z listy}
 \end{figure}
 
+Trend liniowy MongoDB w wariancie bez indeksu się potwierdza --
+20~ms na \emph{small}, 55~ms na \emph{medium}. Z indeksem to wciąż
+0.7~ms, czyli \emph{80-krotna} różnica. PostgreSQL i MySQL stabilne
+poniżej 6~ms. Ten prosty scenariusz najwyraźniej obrazuje regułę:
+\texttt{deleteOne} bez indeksu jest \texttt{COLLSCAN}-em, koniec
+historii.
+
 \subsubsection{D6: Masowe usunięcie nieaktywnych użytkowników}
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.8\textwidth]{charts/medium/chart_D6.png}
     \caption{D6 -- Masowe usunięcie nieaktywnych użytkowników}
 \end{figure}
+
+Zaczyna być \emph{dramatycznie}. PostgreSQL bez indeksu na
+\texttt{users.status} -- \textbf{1.4~sekundy}, z indeksem 3.3~ms.
+To 425-krotne przyspieszenie -- jeden z najmocniejszych wyników
+w pracy. MongoDB i Neo4j odpowiednio 2/4~ms i 28/10~ms -- też
+zyskują, ale bez tej dramaturgii. MySQL stabilnie 8~ms. Na
+\emph{large} ten kontrast pokaże się jeszcze mocniej -- PostgreSQL
+przekroczy 30~sekund.
 
 % -------------------------------------------------------
 % UPDATE
@@ -78,9 +140,25 @@
     \caption{U2 -- Przeliczenie średniej oceny}
 \end{figure}
 
+PostgreSQL: 8.8 → 1.5~ms (5×). MongoDB: 30 → 1.6~ms (19×). MySQL
+stabilnie 6~ms, Neo4j 4~ms. Pojedynczy \texttt{UPDATE} po znalezieniu
+wiersza z agregatu, wzorzec znany z \emph{small} -- tylko skala
+narzutu wzrasta tam, gdzie indeksu brakuje. Indeks robi tu robotę
+oczekiwaną (przyspiesza punktowy filtr), bez negatywnego wpływu
+na samą operację zapisu, bo modyfikujemy jeden wiersz.
+
 \subsubsection{U3: Masowa zmiana planu subskrypcji}
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.8\textwidth]{charts/medium/chart_U3.png}
     \caption{U3 -- Masowa zmiana planu subskrypcji}
 \end{figure}
+
+\emph{Penalizacja indeksów rośnie}. PostgreSQL bez indeksu 30~ms,
+z indeksem 65~ms (ponad dwukrotne pogorszenie). MySQL 124 → 179~ms,
+Mongo 107 → 104~ms (tu indeks praktycznie neutralny). Neo4j
+zachowuje się odwrotnie -- 194 → 158~ms (lekkie polepszenie),
+prawdopodobnie dlatego że \texttt{plan\_name} nie jest indeksowany
+w grafie. Im więcej zaktualizowanych wierszy i im więcej indeksów
+na zmienianej kolumnie, tym wyższa kara czasowa -- to jest
+podręcznikowy efekt utrzymania indeksu przy modyfikacji.
