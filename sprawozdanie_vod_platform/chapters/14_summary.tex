@@ -1,0 +1,92 @@
+\subsection{Cel i zakres pracy}
+
+Celem pracy było porównanie wydajności czterech systemów zarządzania
+bazami danych -- PostgreSQL, MySQL, MongoDB i Neo4j -- na realistycznym
+modelu danych platformy streamingowej VOD. Porównanie przeprowadzono
+przez 24 scenariusze CRUD (po 6 z każdej kategorii: INSERT, SELECT,
+UPDATE, DELETE), wykonywane na trzech wolumenach danych
+(\emph{small} -- 500\,tys., \emph{medium} -- 1\,mln, \emph{large} --
+10\,mln rekordów), w dwóch wariantach indeksowych (bez indeksów
+dodatkowych i z nimi). Centralnym pytaniem badawczym była weryfikacja
+hipotezy o wpływie indeksów na operacje czytające i zapisujące.
+
+% -------------------------------------------------------
+\subsection{Co zostało wykonane}
+
+W ramach pracy zaprojektowano cztery równoważne reprezentacje tej
+samej domeny -- relacyjną dla PostgreSQL i MySQL, dokumentową dla
+MongoDB oraz grafową dla Neo4j -- co opisano w rozdziale 6. Stworzono
+deterministyczny generator danych zapisujący wyniki do plików CSV
+zaczerpywanych przez cztery niezależne loadery (rozdział 8). Zbudowano
+warstwę orkiestracji w Pythonie (rozdziały 7 i 9) odpowiedzialną za
+sekwencyjne uruchamianie pipeline'u: generowanie~$\rightarrow$~ładowanie~$\rightarrow$~benchmark~$\rightarrow$
+analiza EXPLAIN~$\rightarrow$~wizualizacja, w dwóch wariantach indeksowych.
+Łącznie wykonano \textbf{1\,728 pomiarów czasów wykonania} oraz
+\textbf{144 analizy planów wykonania} (po 6 scenariuszy SELECT
+$\times$~4 silniki $\times$~3 wolumeny $\times$~2 warianty), z których
+zsyntetyzowano analizę przedstawioną w rozdziałach 11--13.
+
+% -------------------------------------------------------
+\subsection{Główne wnioski}
+
+\textbf{Hipoteza została potwierdzona w postaci ogólnej.} Indeksy
+istotnie przyspieszają operacje SELECT (najmocniejsze redukcje rzędu
+$10^2$--$10^3$ razy w scenariuszach S5 MongoDB i D6 PostgreSQL) oraz
+spowalniają masowe operacje UPDATE i INSERT na kolumnach indeksowanych
+(scenariusz U3 PostgreSQL: 2.4-krotne spowolnienie). Skala efektu
+zależy jednak silnie od dwóch czynników -- selektywności filtru oraz
+liczby modyfikowanych wierszy w kolumnach indeksowanych. Pełna
+weryfikacja punkt po punkcie znajduje się w rozdziale 13.
+
+\textbf{Architektura silnika ma porównywalne znaczenie z obecnością
+indeksów.} W scenariuszu S2 (collaborative filtering) Neo4j na
+wolumenie \emph{large} jest 8--15-krotnie szybszy od pozostałych baz,
+niezależnie od wariantu indeksowego -- bo wielokrotna nawigacja
+po krawędziach jest tańsza od kolejnych \texttt{JOIN}-ów po milionach
+wierszy. Z drugiej strony MongoDB w scenariuszach \texttt{INSERT}
+masowych (I2) demonstruje ograniczenia modelu dokumentowego -- 3-krotne
+spowolnienie po założeniu indeksu. Każdy z czterech paradygmatów ma
+,,słodkie punkty'' i miejsca, w których strukturalnie traci.
+
+\textbf{Operacje DELETE pokazują, że hipoteza ma postać ogólniejszą.}
+Mimo że pierwotna hipoteza nie obejmowała operacji usuwających, dane
+wskazują, że indeks pomaga w każdej operacji wyposażonej w \emph{fazę
+wyszukiwania} -- włącznie z DELETE. Najsilniejszy wynik całej pracy
+(D6 PostgreSQL, redukcja z 30.7~sekundy do 10~milisekund) dotyczy
+właśnie tej kategorii. Uogólniona forma hipotezy: \emph{indeksy
+przyspieszają fazę wyszukiwania w dowolnej operacji CRUD i spowalniają
+fazę modyfikacji w operacjach modyfikujących -- przewaga albo
+penalizacja zależy od proporcji między tymi fazami}.
+
+\textbf{Praktyczna rekomendacja}: indeksy należy
+zakładać agresywnie dla kolumn intensywnie filtrowanych w SELECT
+i DELETE, ostrożnie dla kolumn często aktualizowanych masowo;
+najwyższy priorytet powinny mieć indeksy na kluczach obcych w tabelach
+biorących udział w usuwaniu kaskadowym. Wybór silnika powinien być
+podyktowany dominującym wzorcem dostępu w aplikacji -- dla wzorców
+nawigacyjnych (rekomendacje, sieci powiązań) wygrywa graf, dla
+agregacji punktowych wygrywa baza relacyjna z bogatym zestawem
+indeksów (PostgreSQL), dla pojedynczych operacji \texttt{INSERT}
+struktur zagnieżdżonych wygrywa model dokumentowy.
+
+% -------------------------------------------------------
+\subsection{Ograniczenia pracy}
+
+Pomiary były wykonywane jednowątkowo, bez współbieżnego obciążenia,
+co nie odzwierciedla typowego scenariusza produkcyjnego, w którym
+silnik obsługuje wiele równoczesnych klientów. Liczba prób na
+scenariusz (\texttt{trials}=3) jest mała statystycznie -- mediana
+z trzech wartości jest odporna na pojedyncze odchylenia, ale nie
+pozwala na wnioski o rozkładzie ogonów. Konfiguracja silników została
+świadomie zbliżona do siebie pod względem limitów pamięci, ale nie
+była dostrojona per silnik -- w realnym wdrożeniu każdy z nich
+zasługiwałby na własną, dedykowaną kalibrację. MySQL nie pozwala
+upuścić indeksu chroniącego klucz obcy, przez co baseline
+,,bez indeksów'' jest dla niego częściowo skażony i utrudnia
+bezpośrednie porównanie z pozostałymi silnikami. Wreszcie, 24
+scenariusze pokrywają reprezentatywny przekrój operacji platformy
+VOD, ale nie wyczerpują wszystkich możliwych wzorców dostępu --
+w szczególności brakuje zapytań analitycznych typu OLAP, agregacji
+po długich oknach czasowych oraz operacji geoprzestrzennych.
+
+% -------------------------------------------------------
